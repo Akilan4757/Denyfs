@@ -1,0 +1,45 @@
+# Compiled binaries
+denyfs
+test_crypto
+test_volume
+test_fs
+test_timing
+test_stress
+test_bench
+fuzz_header
+fuzz_sector
+
+# Test container images
+*.img
+
+# AFL++ fuzzing artifacts
+fuzz_corpus_header/
+fuzz_corpus_sector/
+fuzz_findings_header/
+fuzz_findings_sector/
+
+# Object files
+*.o
+*.obj
+
+# Debug symbols
+*.dSYM/
+*.pdb
+
+# OS junk
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Editor/IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.agents/
+
+# Core dumps
+core
+core.*
+vgcore.*
