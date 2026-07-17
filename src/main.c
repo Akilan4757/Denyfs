@@ -36,6 +36,82 @@ char *secure_dup_password(char *arg, size_t *out_len) {
     return sec_pass;
 }
 
+#ifndef _WIN32
+#include <termios.h>
+#include <unistd.h>
+
+char *get_password_interactive(const char *prompt, size_t *out_len) {
+    printf("%s", prompt);
+    fflush(stdout);
+
+    struct termios oldt, newt;
+    if (tcgetattr(STDIN_FILENO, &oldt) != 0) {
+        return NULL;
+    }
+    newt = oldt;
+    newt.c_lflag &= ~(ECHO | ECHONL);
+    if (tcsetattr(STDIN_FILENO, TCSANOW, &newt) != 0) {
+        return NULL;
+    }
+
+    size_t max_len = 512;
+    char *sec_pass = denyfs_secure_alloc(max_len);
+    if (!sec_pass) {
+        tcsetattr(STDIN_FILENO, TCSANOW, &oldt);
+        return NULL;
+    }
+
+    size_t len = 0;
+    int ch;
+    while ((ch = getchar()) != EOF && ch != '\n' && ch != '\r') {
+        if (len < max_len - 1) {
+            sec_pass[len++] = (char)ch;
+        }
+    }
+    sec_pass[len] = '\0';
+
+    tcsetattr(STDIN_FILENO, TCSANOW, &oldt);
+    printf("\n");
+    fflush(stdout);
+
+    if (out_len) *out_len = len;
+    return sec_pass;
+}
+#else
+#include <conio.h>
+char *get_password_interactive(const char *prompt, size_t *out_len) {
+    printf("%s", prompt);
+    fflush(stdout);
+
+    size_t max_len = 512;
+    char *sec_pass = denyfs_secure_alloc(max_len);
+    if (!sec_pass) return NULL;
+
+    size_t len = 0;
+    int ch;
+    while ((ch = _getch()) != EOF && ch != '\r' && ch != '\n') {
+        if (ch == 8 || ch == 127) { // backspace
+            if (len > 0) len--;
+        } else if (len < max_len - 1) {
+            sec_pass[len++] = (char)ch;
+        }
+    }
+    sec_pass[len] = '\0';
+    printf("\n");
+    fflush(stdout);
+
+    if (out_len) *out_len = len;
+    return sec_pass;
+}
+#endif
+
+void warn_insecure_argv(void) {
+    fprintf(stderr, "⚠️  WARNING: Passing password via command line arguments is insecure.\n");
+    fprintf(stderr, "   It leaks to shell history (.bash_history) and process status (ps aux).\n");
+    fprintf(stderr, "   Use the interactive prompt instead by omitting the password argument.\n\n");
+}
+
+
 // ---------------------------------------------------------------------------
 // Command handlers
 // ---------------------------------------------------------------------------
@@ -272,7 +348,7 @@ int main(int argc, char **argv) {
     const char *command = argv[1];
 
     if (strcmp(command, "create") == 0) {
-        if (argc < 7) { fprintf(stderr, "Error: Missing arguments for 'create'.\n"); return 1; }
+        if (argc < 5) { fprintf(stderr, "Error: Missing arguments for 'create'.\n"); return 1; }
         const char *path = argv[2];
         uint64_t size_mb = 0;
         char *raw_pass = NULL;
@@ -281,12 +357,21 @@ int main(int argc, char **argv) {
         for (int i = 3; i < argc; i++) {
             if (strcmp(argv[i], "--size") == 0 && i + 1 < argc)
                 size_mb = strtoull(argv[i+1], NULL, 10);
-            else if (strcmp(argv[i], "--password") == 0 && i + 1 < argc)
+            else if (strcmp(argv[i], "--password") == 0 && i + 1 < argc) {
+                warn_insecure_argv();
                 raw_pass = secure_dup_password(argv[i+1], &pass_len);
+            }
         }
-        if (size_mb == 0 || !raw_pass) {
-            fprintf(stderr, "Error: Invalid size or missing password.\n");
-            secure_cleanup_buffer(raw_pass, pass_len); return 1;
+        if (size_mb == 0) {
+            fprintf(stderr, "Error: Invalid or missing size (--size).\n");
+            return 1;
+        }
+        if (!raw_pass) {
+            raw_pass = get_password_interactive("Enter password: ", &pass_len);
+        }
+        if (!raw_pass) {
+            fprintf(stderr, "Error: Password required.\n");
+            return 1;
         }
         int ret = handle_create(path, size_mb, raw_pass, pass_len);
         secure_cleanup_buffer(raw_pass, pass_len);
@@ -294,7 +379,7 @@ int main(int argc, char **argv) {
         return ret;
 
     } else if (strcmp(command, "create-hidden") == 0) {
-        if (argc < 9) { fprintf(stderr, "Error: Missing arguments for 'create-hidden'.\n"); return 1; }
+        if (argc < 5) { fprintf(stderr, "Error: Missing arguments for 'create-hidden'.\n"); return 1; }
         const char *path = argv[2];
         char *outer_pass = NULL;
         size_t outer_pass_len = 0;
@@ -303,15 +388,28 @@ int main(int argc, char **argv) {
         uint64_t size_mb = 0;
 
         for (int i = 3; i < argc; i++) {
-            if (strcmp(argv[i], "--password") == 0 && i + 1 < argc)
+            if (strcmp(argv[i], "--password") == 0 && i + 1 < argc) {
+                warn_insecure_argv();
                 outer_pass = secure_dup_password(argv[i+1], &outer_pass_len);
-            else if (strcmp(argv[i], "--hidden-password") == 0 && i + 1 < argc)
+            } else if (strcmp(argv[i], "--hidden-password") == 0 && i + 1 < argc) {
+                warn_insecure_argv();
                 hidden_pass = secure_dup_password(argv[i+1], &hidden_pass_len);
-            else if (strcmp(argv[i], "--size") == 0 && i + 1 < argc)
+            } else if (strcmp(argv[i], "--size") == 0 && i + 1 < argc) {
                 size_mb = strtoull(argv[i+1], NULL, 10);
+            }
         }
-        if (!outer_pass || !hidden_pass || size_mb == 0) {
-            fprintf(stderr, "Error: Missing size, outer password, or hidden password.\n");
+        if (size_mb == 0) {
+            fprintf(stderr, "Error: Invalid or missing size (--size).\n");
+            return 1;
+        }
+        if (!outer_pass) {
+            outer_pass = get_password_interactive("Enter outer volume password: ", &outer_pass_len);
+        }
+        if (!hidden_pass) {
+            hidden_pass = get_password_interactive("Enter hidden volume password: ", &hidden_pass_len);
+        }
+        if (!outer_pass || !hidden_pass) {
+            fprintf(stderr, "Error: Both passwords are required.\n");
             secure_cleanup_buffer(outer_pass, outer_pass_len);
             secure_cleanup_buffer(hidden_pass, hidden_pass_len);
             return 1;
@@ -324,7 +422,7 @@ int main(int argc, char **argv) {
         return ret;
 
     } else if (strcmp(command, "open") == 0) {
-        if (argc < 5) { fprintf(stderr, "Error: Missing arguments for 'open'.\n"); return 1; }
+        if (argc < 3) { fprintf(stderr, "Error: Missing arguments for 'open'.\n"); return 1; }
         const char *path = argv[2];
         char *raw_pass = NULL;
         size_t pass_len = 0;
@@ -334,14 +432,26 @@ int main(int argc, char **argv) {
 
         for (int i = 3; i < argc; i++) {
             if (strcmp(argv[i], "--password") == 0 && i + 1 < argc) {
-                raw_pass = secure_dup_password(argv[i+1], &pass_len); i++;
+                warn_insecure_argv();
+                raw_pass = secure_dup_password(argv[i+1], &pass_len);
             } else if (strcmp(argv[i], "--hidden-password") == 0 && i + 1 < argc) {
-                hidden_pass = secure_dup_password(argv[i+1], &hidden_pass_len); i++;
+                warn_insecure_argv();
+                hidden_pass = secure_dup_password(argv[i+1], &hidden_pass_len);
             } else if (strcmp(argv[i], "--protect-hidden") == 0) {
                 protect_hidden = 1;
             }
         }
-        if (!raw_pass) { fprintf(stderr, "Error: Missing password.\n"); return 1; }
+        if (!raw_pass) {
+            raw_pass = get_password_interactive("Enter volume password: ", &pass_len);
+        }
+        if (protect_hidden && !hidden_pass) {
+            hidden_pass = get_password_interactive("Enter hidden volume password for protection: ", &hidden_pass_len);
+        }
+        if (!raw_pass) {
+            fprintf(stderr, "Error: Password required.\n");
+            secure_cleanup_buffer(hidden_pass, hidden_pass_len);
+            return 1;
+        }
         int ret = handle_open(path, raw_pass, pass_len, hidden_pass, hidden_pass_len, protect_hidden);
         secure_cleanup_buffer(raw_pass, pass_len);
         secure_cleanup_buffer(hidden_pass, hidden_pass_len);
@@ -349,6 +459,7 @@ int main(int argc, char **argv) {
         return ret;
 
     } else if (strcmp(command, "mount") == 0) {
+        if (argc < 3) { fprintf(stderr, "Error: Missing arguments for 'mount'.\n"); return 1; }
         const char *path = argv[2];
         char *raw_pass = NULL;
         size_t pass_len = 0;
@@ -359,18 +470,31 @@ int main(int argc, char **argv) {
 
         for (int i = 3; i < argc; i++) {
             if (strcmp(argv[i], "--password") == 0 && i + 1 < argc) {
-                raw_pass = secure_dup_password(argv[i+1], &pass_len); i++;
+                warn_insecure_argv();
+                raw_pass = secure_dup_password(argv[i+1], &pass_len);
             } else if (strcmp(argv[i], "--hidden-password") == 0 && i + 1 < argc) {
-                hidden_pass = secure_dup_password(argv[i+1], &hidden_pass_len); i++;
+                warn_insecure_argv();
+                hidden_pass = secure_dup_password(argv[i+1], &hidden_pass_len);
             } else if (strcmp(argv[i], "--protect-hidden") == 0) {
                 protect_hidden = 1;
             } else if (strcmp(argv[i], "--mountpoint") == 0 && i + 1 < argc) {
-                mount_point = argv[i+1]; i++;
+                mount_point = argv[i+1];
             }
         }
-        if (!raw_pass || !mount_point) {
-            fprintf(stderr, "Error: Missing arguments for 'mount'.\n");
+        if (!mount_point) {
+            fprintf(stderr, "Error: Missing mountpoint (--mountpoint).\n");
             secure_cleanup_buffer(raw_pass, pass_len);
+            secure_cleanup_buffer(hidden_pass, hidden_pass_len);
+            return 1;
+        }
+        if (!raw_pass) {
+            raw_pass = get_password_interactive("Enter volume password: ", &pass_len);
+        }
+        if (protect_hidden && !hidden_pass) {
+            hidden_pass = get_password_interactive("Enter hidden volume password for protection: ", &hidden_pass_len);
+        }
+        if (!raw_pass) {
+            fprintf(stderr, "Error: Password required.\n");
             secure_cleanup_buffer(hidden_pass, hidden_pass_len);
             return 1;
         }
@@ -381,6 +505,7 @@ int main(int argc, char **argv) {
         return ret;
 
     } else if (strcmp(command, "write-sector") == 0) {
+        if (argc < 3) { fprintf(stderr, "Error: Missing arguments for 'write-sector'.\n"); return 1; }
         const char *path = argv[2];
         char *raw_pass = NULL;
         size_t pass_len = 0;
@@ -390,16 +515,25 @@ int main(int argc, char **argv) {
 
         for (int i = 3; i < argc; i++) {
             if (strcmp(argv[i], "--password") == 0 && i + 1 < argc) {
-                raw_pass = secure_dup_password(argv[i+1], &pass_len); i++;
+                warn_insecure_argv();
+                raw_pass = secure_dup_password(argv[i+1], &pass_len);
             } else if (strcmp(argv[i], "--lba") == 0 && i + 1 < argc) {
-                lba = strtoull(argv[i+1], NULL, 10); have_lba = 1; i++;
+                lba = strtoull(argv[i+1], NULL, 10); have_lba = 1;
             } else if (strcmp(argv[i], "--data") == 0 && i + 1 < argc) {
-                data_file = argv[i+1]; i++;
+                data_file = argv[i+1];
             }
         }
-        if (!raw_pass || !have_lba || !data_file) {
-            fprintf(stderr, "Error: Missing arguments for 'write-sector'.\n");
-            secure_cleanup_buffer(raw_pass, pass_len); return 1;
+        if (!have_lba || !data_file) {
+            fprintf(stderr, "Error: Missing LBA or data file (--lba, --data).\n");
+            secure_cleanup_buffer(raw_pass, pass_len);
+            return 1;
+        }
+        if (!raw_pass) {
+            raw_pass = get_password_interactive("Enter volume password: ", &pass_len);
+        }
+        if (!raw_pass) {
+            fprintf(stderr, "Error: Password required.\n");
+            return 1;
         }
         int ret = handle_write_sector(path, raw_pass, pass_len, lba, data_file);
         secure_cleanup_buffer(raw_pass, pass_len);
@@ -407,6 +541,7 @@ int main(int argc, char **argv) {
         return ret;
 
     } else if (strcmp(command, "read-sector") == 0) {
+        if (argc < 3) { fprintf(stderr, "Error: Missing arguments for 'read-sector'.\n"); return 1; }
         const char *path = argv[2];
         char *raw_pass = NULL;
         size_t pass_len = 0;
@@ -416,16 +551,25 @@ int main(int argc, char **argv) {
 
         for (int i = 3; i < argc; i++) {
             if (strcmp(argv[i], "--password") == 0 && i + 1 < argc) {
-                raw_pass = secure_dup_password(argv[i+1], &pass_len); i++;
+                warn_insecure_argv();
+                raw_pass = secure_dup_password(argv[i+1], &pass_len);
             } else if (strcmp(argv[i], "--lba") == 0 && i + 1 < argc) {
-                lba = strtoull(argv[i+1], NULL, 10); have_lba = 1; i++;
+                lba = strtoull(argv[i+1], NULL, 10); have_lba = 1;
             } else if (strcmp(argv[i], "--output") == 0 && i + 1 < argc) {
-                out_file = argv[i+1]; i++;
+                out_file = argv[i+1];
             }
         }
-        if (!raw_pass || !have_lba || !out_file) {
-            fprintf(stderr, "Error: Missing arguments for 'read-sector'.\n");
-            secure_cleanup_buffer(raw_pass, pass_len); return 1;
+        if (!have_lba || !out_file) {
+            fprintf(stderr, "Error: Missing LBA or output file (--lba, --output).\n");
+            secure_cleanup_buffer(raw_pass, pass_len);
+            return 1;
+        }
+        if (!raw_pass) {
+            raw_pass = get_password_interactive("Enter volume password: ", &pass_len);
+        }
+        if (!raw_pass) {
+            fprintf(stderr, "Error: Password required.\n");
+            return 1;
         }
         int ret = handle_read_sector(path, raw_pass, pass_len, lba, out_file);
         secure_cleanup_buffer(raw_pass, pass_len);
@@ -437,3 +581,4 @@ int main(int argc, char **argv) {
         return 1;
     }
 }
+
