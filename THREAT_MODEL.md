@@ -258,9 +258,34 @@ These are information channels **outside** the container file that can leak evid
 
 ---
 
+## 9. Appendix: Data-Block Authentication vs. Plausible Deniability Tradeoff
+
+DenyFS intentionally omits cryptographic authentication (HMAC or AEAD tags like GCM) for the file data blocks and inode metadata, opting for pure AES-256-XTS sector-level disk encryption instead. While standard storage systems require AEAD to prevent tampering, doing so in a deniable storage system is a fatal design flaw.
+
+### The Cryptographic Dilemma
+To authenticate a sector, a cryptographic tag (e.g., 16 bytes for GCM) must be stored. There are only two ways to store this tag:
+1. **Inline / Adjacent to the Sector:** This expands the sector size (e.g., 4096 bytes of plaintext becomes 4112 bytes of ciphertext). A host disk sector is strictly 512 or 4096 bytes; block expansion cannot be easily mapped to physical sectors without leaking layout structure.
+2. **In an Out-of-Band Tag Database:** A dedicated allocation map or table holds the authentication tags for all sectors. 
+
+In either case, a coercing adversary can easily scan the disk:
+- If the adversary finds structural metadata holding valid cryptographic tags or non-random headers for the hidden region's sectors, they can immediately confirm the existence of encrypted data rather than CSPRNG noise.
+- Even if the tags are encrypted, they must be validated. If the adversary forces you to reveal the outer volume key, the tags for the hidden volume will fail to validate with that key, but they will still *be present* on disk (possessing non-random distributions or dedicated slot positions), showing that the blocks are not empty.
+
+### The DenyFS Resolution
+By using **AES-256-XTS**, DenyFS guarantees:
+- **No Block Expansion:** Ciphertext size exactly matches plaintext size (4096 bytes).
+- **Indistinguishability from Random:** Under XTS, ciphertext blocks are mathematically indistinguishable from the CSPRNG noise used to fill the container at creation. There are no tags, no nonces, and no markers.
+
+The metadata allocation bitmap *is* authenticated via a single HMAC-SHA256 stored inside the encrypted outer/hidden headers. Since the headers are already authenticated with GCM, the bitmap integrity check does not leak any hidden volume structure.
+
+Therefore, the lack of file data block authentication is a **mandatory security tradeoff** to satisfy the core deniability model.
+
+---
+
 ## References
 
 - [DenyFS Architecture & Build Plan](DenyFS-Architecture-and-Build-Plan.md) — Full design document (brain file)
 - [BUILD_INTEGRITY.md](BUILD_INTEGRITY.md) — Build integrity scope limitations
 - [BENCHMARKS.md](BENCHMARKS.md) — Performance benchmarks and analysis
 - [PROGRESS_LOG.md](PROGRESS_LOG.md) — Session-by-session development log
+

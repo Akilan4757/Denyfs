@@ -17,28 +17,33 @@ void secure_cleanup_buffer(void *buf, size_t size) {
     }
 }
 
-// Securely copy command line password and wipe the argv source
-char *secure_dup_password(char *arg, size_t *out_len) {
-    if (!arg) return NULL;
-    size_t len = strlen(arg);
-    char *sec_pass = denyfs_secure_alloc(len + 1);
-    if (!sec_pass) {
-        fprintf(stderr, "Error: secure memory allocation failed.\n");
-        exit(1);
+#ifdef _WIN32
+#include <io.h>
+#define read_fd _read
+#else
+#include <unistd.h>
+#define read_fd read
+#endif
+
+char *read_password_from_fd(int fd, size_t *out_len) {
+    size_t max_len = 512;
+    char *sec_pass = denyfs_secure_alloc(max_len);
+    if (!sec_pass) return NULL;
+
+    size_t len = 0;
+    char ch;
+    while (read_fd(fd, &ch, 1) > 0 && ch != '\n' && ch != '\r') {
+        if (len < max_len - 1) {
+            sec_pass[len++] = ch;
+        }
     }
-    memcpy(sec_pass, arg, len);
     sec_pass[len] = '\0';
-    
-    // Wipe original command line arg
-    sodium_memzero(arg, len);
-    
     if (out_len) *out_len = len;
     return sec_pass;
 }
 
 #ifndef _WIN32
 #include <termios.h>
-#include <unistd.h>
 
 char *get_password_interactive(const char *prompt, size_t *out_len) {
     printf("%s", prompt);
@@ -105,11 +110,6 @@ char *get_password_interactive(const char *prompt, size_t *out_len) {
 }
 #endif
 
-void warn_insecure_argv(void) {
-    fprintf(stderr, "⚠️  WARNING: Passing password via command line arguments is insecure.\n");
-    fprintf(stderr, "   It leaks to shell history (.bash_history) and process status (ps aux).\n");
-    fprintf(stderr, "   Use the interactive prompt instead by omitting the password argument.\n\n");
-}
 
 
 // ---------------------------------------------------------------------------
@@ -336,12 +336,12 @@ int main(int argc, char **argv) {
 
     if (argc < 2) {
         fprintf(stderr, "Usage:\n");
-        fprintf(stderr, "  %s create <path> --size <mb> --password <pass>\n", argv[0]);
-        fprintf(stderr, "  %s create-hidden <path> --password <outer_pass> --hidden-password <hidden_pass> --size <mb>\n", argv[0]);
-        fprintf(stderr, "  %s open <path> --password <pass> [--protect-hidden] [--hidden-password <hidden_pass>]\n", argv[0]);
-        fprintf(stderr, "  %s mount <path> --password <pass> --mountpoint <dir> [--protect-hidden] [--hidden-password <hidden_pass>]\n", argv[0]);
-        fprintf(stderr, "  %s write-sector <path> --password <pass> --lba <n> --data <file>\n", argv[0]);
-        fprintf(stderr, "  %s read-sector <path> --password <pass> --lba <n> --output <file>\n", argv[0]);
+        fprintf(stderr, "  %s create <path> --size <mb> [--password-fd <fd>]\n", argv[0]);
+        fprintf(stderr, "  %s create-hidden <path> --size <mb> [--password-fd <fd>] [--hidden-password-fd <fd>]\n", argv[0]);
+        fprintf(stderr, "  %s open <path> [--password-fd <fd>] [--protect-hidden] [--hidden-password-fd <fd>]\n", argv[0]);
+        fprintf(stderr, "  %s mount <path> --mountpoint <dir> [--password-fd <fd>] [--protect-hidden] [--hidden-password-fd <fd>]\n", argv[0]);
+        fprintf(stderr, "  %s write-sector <path> --lba <n> --data <file> [--password-fd <fd>]\n", argv[0]);
+        fprintf(stderr, "  %s read-sector <path> --lba <n> --output <file> [--password-fd <fd>]\n", argv[0]);
         return 1;
     }
 
@@ -353,20 +353,21 @@ int main(int argc, char **argv) {
         uint64_t size_mb = 0;
         char *raw_pass = NULL;
         size_t pass_len = 0;
+        int pwd_fd = -1;
 
         for (int i = 3; i < argc; i++) {
             if (strcmp(argv[i], "--size") == 0 && i + 1 < argc)
                 size_mb = strtoull(argv[i+1], NULL, 10);
-            else if (strcmp(argv[i], "--password") == 0 && i + 1 < argc) {
-                warn_insecure_argv();
-                raw_pass = secure_dup_password(argv[i+1], &pass_len);
-            }
+            else if (strcmp(argv[i], "--password-fd") == 0 && i + 1 < argc)
+                pwd_fd = atoi(argv[i+1]);
         }
         if (size_mb == 0) {
             fprintf(stderr, "Error: Invalid or missing size (--size).\n");
             return 1;
         }
-        if (!raw_pass) {
+        if (pwd_fd >= 0) {
+            raw_pass = read_password_from_fd(pwd_fd, &pass_len);
+        } else {
             raw_pass = get_password_interactive("Enter password: ", &pass_len);
         }
         if (!raw_pass) {
@@ -386,26 +387,29 @@ int main(int argc, char **argv) {
         char *hidden_pass = NULL;
         size_t hidden_pass_len = 0;
         uint64_t size_mb = 0;
+        int pwd_fd = -1;
+        int hidden_pwd_fd = -1;
 
         for (int i = 3; i < argc; i++) {
-            if (strcmp(argv[i], "--password") == 0 && i + 1 < argc) {
-                warn_insecure_argv();
-                outer_pass = secure_dup_password(argv[i+1], &outer_pass_len);
-            } else if (strcmp(argv[i], "--hidden-password") == 0 && i + 1 < argc) {
-                warn_insecure_argv();
-                hidden_pass = secure_dup_password(argv[i+1], &hidden_pass_len);
-            } else if (strcmp(argv[i], "--size") == 0 && i + 1 < argc) {
+            if (strcmp(argv[i], "--password-fd") == 0 && i + 1 < argc)
+                pwd_fd = atoi(argv[i+1]);
+            else if (strcmp(argv[i], "--hidden-password-fd") == 0 && i + 1 < argc)
+                hidden_pwd_fd = atoi(argv[i+1]);
+            else if (strcmp(argv[i], "--size") == 0 && i + 1 < argc)
                 size_mb = strtoull(argv[i+1], NULL, 10);
-            }
         }
         if (size_mb == 0) {
             fprintf(stderr, "Error: Invalid or missing size (--size).\n");
             return 1;
         }
-        if (!outer_pass) {
+        if (pwd_fd >= 0) {
+            outer_pass = read_password_from_fd(pwd_fd, &outer_pass_len);
+        } else {
             outer_pass = get_password_interactive("Enter outer volume password: ", &outer_pass_len);
         }
-        if (!hidden_pass) {
+        if (hidden_pwd_fd >= 0) {
+            hidden_pass = read_password_from_fd(hidden_pwd_fd, &hidden_pass_len);
+        } else {
             hidden_pass = get_password_interactive("Enter hidden volume password: ", &hidden_pass_len);
         }
         if (!outer_pass || !hidden_pass) {
@@ -429,23 +433,28 @@ int main(int argc, char **argv) {
         char *hidden_pass = NULL;
         size_t hidden_pass_len = 0;
         int protect_hidden = 0;
+        int pwd_fd = -1;
+        int hidden_pwd_fd = -1;
 
         for (int i = 3; i < argc; i++) {
-            if (strcmp(argv[i], "--password") == 0 && i + 1 < argc) {
-                warn_insecure_argv();
-                raw_pass = secure_dup_password(argv[i+1], &pass_len);
-            } else if (strcmp(argv[i], "--hidden-password") == 0 && i + 1 < argc) {
-                warn_insecure_argv();
-                hidden_pass = secure_dup_password(argv[i+1], &hidden_pass_len);
-            } else if (strcmp(argv[i], "--protect-hidden") == 0) {
+            if (strcmp(argv[i], "--password-fd") == 0 && i + 1 < argc)
+                pwd_fd = atoi(argv[i+1]);
+            else if (strcmp(argv[i], "--hidden-password-fd") == 0 && i + 1 < argc)
+                hidden_pwd_fd = atoi(argv[i+1]);
+            else if (strcmp(argv[i], "--protect-hidden") == 0)
                 protect_hidden = 1;
-            }
         }
-        if (!raw_pass) {
+        if (pwd_fd >= 0) {
+            raw_pass = read_password_from_fd(pwd_fd, &pass_len);
+        } else {
             raw_pass = get_password_interactive("Enter volume password: ", &pass_len);
         }
-        if (protect_hidden && !hidden_pass) {
-            hidden_pass = get_password_interactive("Enter hidden volume password for protection: ", &hidden_pass_len);
+        if (protect_hidden) {
+            if (hidden_pwd_fd >= 0) {
+                hidden_pass = read_password_from_fd(hidden_pwd_fd, &hidden_pass_len);
+            } else {
+                hidden_pass = get_password_interactive("Enter hidden volume password for protection: ", &hidden_pass_len);
+            }
         }
         if (!raw_pass) {
             fprintf(stderr, "Error: Password required.\n");
@@ -467,19 +476,18 @@ int main(int argc, char **argv) {
         size_t hidden_pass_len = 0;
         int protect_hidden = 0;
         const char *mount_point = NULL;
+        int pwd_fd = -1;
+        int hidden_pwd_fd = -1;
 
         for (int i = 3; i < argc; i++) {
-            if (strcmp(argv[i], "--password") == 0 && i + 1 < argc) {
-                warn_insecure_argv();
-                raw_pass = secure_dup_password(argv[i+1], &pass_len);
-            } else if (strcmp(argv[i], "--hidden-password") == 0 && i + 1 < argc) {
-                warn_insecure_argv();
-                hidden_pass = secure_dup_password(argv[i+1], &hidden_pass_len);
-            } else if (strcmp(argv[i], "--protect-hidden") == 0) {
+            if (strcmp(argv[i], "--password-fd") == 0 && i + 1 < argc)
+                pwd_fd = atoi(argv[i+1]);
+            else if (strcmp(argv[i], "--hidden-password-fd") == 0 && i + 1 < argc)
+                hidden_pwd_fd = atoi(argv[i+1]);
+            else if (strcmp(argv[i], "--protect-hidden") == 0)
                 protect_hidden = 1;
-            } else if (strcmp(argv[i], "--mountpoint") == 0 && i + 1 < argc) {
+            else if (strcmp(argv[i], "--mountpoint") == 0 && i + 1 < argc)
                 mount_point = argv[i+1];
-            }
         }
         if (!mount_point) {
             fprintf(stderr, "Error: Missing mountpoint (--mountpoint).\n");
@@ -487,11 +495,17 @@ int main(int argc, char **argv) {
             secure_cleanup_buffer(hidden_pass, hidden_pass_len);
             return 1;
         }
-        if (!raw_pass) {
+        if (pwd_fd >= 0) {
+            raw_pass = read_password_from_fd(pwd_fd, &pass_len);
+        } else {
             raw_pass = get_password_interactive("Enter volume password: ", &pass_len);
         }
-        if (protect_hidden && !hidden_pass) {
-            hidden_pass = get_password_interactive("Enter hidden volume password for protection: ", &hidden_pass_len);
+        if (protect_hidden) {
+            if (hidden_pwd_fd >= 0) {
+                hidden_pass = read_password_from_fd(hidden_pwd_fd, &hidden_pass_len);
+            } else {
+                hidden_pass = get_password_interactive("Enter hidden volume password for protection: ", &hidden_pass_len);
+            }
         }
         if (!raw_pass) {
             fprintf(stderr, "Error: Password required.\n");
@@ -512,12 +526,12 @@ int main(int argc, char **argv) {
         uint64_t lba = 0;
         const char *data_file = NULL;
         int have_lba = 0;
+        int pwd_fd = -1;
 
         for (int i = 3; i < argc; i++) {
-            if (strcmp(argv[i], "--password") == 0 && i + 1 < argc) {
-                warn_insecure_argv();
-                raw_pass = secure_dup_password(argv[i+1], &pass_len);
-            } else if (strcmp(argv[i], "--lba") == 0 && i + 1 < argc) {
+            if (strcmp(argv[i], "--password-fd") == 0 && i + 1 < argc)
+                pwd_fd = atoi(argv[i+1]);
+            else if (strcmp(argv[i], "--lba") == 0 && i + 1 < argc) {
                 lba = strtoull(argv[i+1], NULL, 10); have_lba = 1;
             } else if (strcmp(argv[i], "--data") == 0 && i + 1 < argc) {
                 data_file = argv[i+1];
@@ -528,7 +542,9 @@ int main(int argc, char **argv) {
             secure_cleanup_buffer(raw_pass, pass_len);
             return 1;
         }
-        if (!raw_pass) {
+        if (pwd_fd >= 0) {
+            raw_pass = read_password_from_fd(pwd_fd, &pass_len);
+        } else {
             raw_pass = get_password_interactive("Enter volume password: ", &pass_len);
         }
         if (!raw_pass) {
@@ -548,12 +564,12 @@ int main(int argc, char **argv) {
         uint64_t lba = 0;
         const char *out_file = NULL;
         int have_lba = 0;
+        int pwd_fd = -1;
 
         for (int i = 3; i < argc; i++) {
-            if (strcmp(argv[i], "--password") == 0 && i + 1 < argc) {
-                warn_insecure_argv();
-                raw_pass = secure_dup_password(argv[i+1], &pass_len);
-            } else if (strcmp(argv[i], "--lba") == 0 && i + 1 < argc) {
+            if (strcmp(argv[i], "--password-fd") == 0 && i + 1 < argc)
+                pwd_fd = atoi(argv[i+1]);
+            else if (strcmp(argv[i], "--lba") == 0 && i + 1 < argc) {
                 lba = strtoull(argv[i+1], NULL, 10); have_lba = 1;
             } else if (strcmp(argv[i], "--output") == 0 && i + 1 < argc) {
                 out_file = argv[i+1];
@@ -564,7 +580,9 @@ int main(int argc, char **argv) {
             secure_cleanup_buffer(raw_pass, pass_len);
             return 1;
         }
-        if (!raw_pass) {
+        if (pwd_fd >= 0) {
+            raw_pass = read_password_from_fd(pwd_fd, &pass_len);
+        } else {
             raw_pass = get_password_interactive("Enter volume password: ", &pass_len);
         }
         if (!raw_pass) {
@@ -581,4 +599,5 @@ int main(int argc, char **argv) {
         return 1;
     }
 }
+
 

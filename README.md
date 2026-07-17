@@ -14,7 +14,7 @@
   <img src="https://img.shields.io/badge/FUSE-libfuse3-4CAF50?style=flat-square" />
   <img src="https://img.shields.io/badge/Platform-Linux_%7C_WSL2-FFA726?style=flat-square&logo=linux&logoColor=white" />
   <img src="https://img.shields.io/badge/License-MIT-blue?style=flat-square" />
-  <img src="https://img.shields.io/badge/Tests-32%2F32_Passing-00C853?style=flat-square" />
+  <a href="https://github.com/Akilan4757/Denyfs/actions/workflows/ci.yml"><img src="https://github.com/Akilan4757/Denyfs/actions/workflows/ci.yml/badge.svg" alt="CI Status" /></a>
   <img src="https://img.shields.io/badge/ASan%2FUBSan-Clean-00C853?style=flat-square" />
 </p>
 
@@ -162,12 +162,12 @@ make test       # runs full test suite (crypto, volume, fs, timing, stress)
 ### Run
 
 ```bash
-# Create a 10MB encrypted container
-./denyfs create vault.img --size 10 --password "MySecretPass"
+# Create a 10MB encrypted container (prompts securely for password)
+./denyfs create vault.img --size 10
 
-# Mount it via FUSE
+# Mount it via FUSE (prompts securely for password)
 mkdir -p /tmp/vault
-./denyfs mount vault.img --password "MySecretPass" --mountpoint /tmp/vault
+./denyfs mount vault.img --mountpoint /tmp/vault
 
 # Use it like a normal filesystem
 echo "classified data" > /tmp/vault/secret.txt
@@ -183,34 +183,34 @@ fusermount -u /tmp/vault
 
 ### 1️⃣ Create a Container
 
-Creates an encrypted container filled with CSPRNG random bytes and formats the outer volume:
+Creates an encrypted container filled with CSPRNG random bytes and formats the outer volume (prompts securely for password):
 
 ```bash
-./denyfs create <container> --size <MB> --password <outer_password>
+./denyfs create <container> --size <MB>
 ```
 
 ```bash
-# Example: create a 50MB container
-./denyfs create secure.img --size 50 --password "correct horse battery staple"
+# Example: create a 50MB container (interactive)
+./denyfs create secure.img --size 50
+
+# Scripted example: read password from file descriptor 3
+./denyfs create secure.img --size 50 --password-fd 3
 ```
 
 ### 2️⃣ Create a Hidden Volume
 
-Formats a hidden volume inside the container's free space. Requires the outer password for authentication:
+Formats a hidden volume inside the container's free space (prompts securely for outer and hidden passwords):
 
 ```bash
-./denyfs create-hidden <container> \
-    --password <outer_password> \
-    --hidden-password <hidden_password> \
-    --size <MB>
+./denyfs create-hidden <container> --size <MB>
 ```
 
 ```bash
-# Example: create a 10MB hidden volume inside the 50MB container
-./denyfs create-hidden secure.img \
-    --password "correct horse battery staple" \
-    --hidden-password "plausible deniability" \
-    --size 10
+# Example: create a 10MB hidden volume inside a 50MB container (interactive)
+./denyfs create-hidden secure.img --size 10
+
+# Scripted example: read outer password from fd 3, hidden password from fd 4
+./denyfs create-hidden secure.img --size 10 --password-fd 3 --hidden-password-fd 4
 ```
 
 ### 3️⃣ Mount a Volume (FUSE)
@@ -218,11 +218,8 @@ Formats a hidden volume inside the container's free space. Requires the outer pa
 DenyFS automatically detects which volume the password unlocks:
 
 ```bash
-# Mount outer volume
-./denyfs mount secure.img --password "correct horse battery staple" --mountpoint /tmp/outer
-
-# Mount hidden volume (same command, different password)
-./denyfs mount secure.img --password "plausible deniability" --mountpoint /tmp/hidden
+# Mount outer or hidden volume (prompts securely for password)
+./denyfs mount secure.img --mountpoint /tmp/mount
 ```
 
 ### 4️⃣ Mount with Hidden Volume Protection
@@ -230,11 +227,8 @@ DenyFS automatically detects which volume the password unlocks:
 When mounting the outer volume under coercion, protect the hidden volume from accidental overwrites:
 
 ```bash
-./denyfs mount secure.img \
-    --password "correct horse battery staple" \
-    --protect-hidden \
-    --hidden-password "plausible deniability" \
-    --mountpoint /tmp/outer
+# Mount outer volume with hidden protection (prompts for outer and hidden passwords)
+./denyfs mount secure.img --protect-hidden --mountpoint /tmp/outer
 ```
 
 > ⚠️ **Without `--protect-hidden`**, writing large files to the outer volume may silently overwrite hidden volume sectors — the outer volume has no knowledge of the hidden volume by design.
@@ -244,11 +238,9 @@ When mounting the outer volume under coercion, protect the hidden volume from ac
 Verify a password without mounting:
 
 ```bash
-./denyfs open secure.img --password "correct horse battery staple"
+# Authenticate (prompts securely for password)
+./denyfs open secure.img
 # Output: Volume opened successfully. Size: 41943040 bytes, Hidden: no
-
-./denyfs open secure.img --password "wrong password"
-# Output: Error: invalid password.
 ```
 
 ---
