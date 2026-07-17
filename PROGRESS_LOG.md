@@ -1,5 +1,29 @@
 # DenyFS Progress Log
 
+## Session 9 — 2026-07-17
+
+### What existed at the start of this session
+- All phases complete and committed. Remote origin configured on GitHub and main branch pushed. However, an analysis of the CLI showed that passwords could only be passed via command line arguments (`argv`), leaking them to shell history, process status listings (`ps aux`), and `/proc/<pid>/cmdline`.
+
+### Scoping decision
+- Resolve the password leak vulnerability. Implement secure, interactive terminal password prompts (no-echo) using termios on UNIX/Linux/WSL, and falling back to un-echoed console reads on Windows console environments. Add explicit warnings when `--password` is used on the CLI. Make the CLI password parameters optional so it triggers interactive password collection seamlessly.
+
+### What was actually built / changed
+- `src/main.c` (MODIFIED):
+  - Added `#ifndef _WIN32` conditional compilation block utilizing standard POSIX `<termios.h>` and `<unistd.h>` to read passwords from `STDIN_FILENO` without echo (`ECHO` and `ECHONL` disabled).
+  - Added a Windows fallback branch utilizing `<conio.h>`'s `_getch()` for un-echoed password reading.
+  - Added `warn_insecure_argv()` helper to display warning messages if passwords are explicitly supplied via CLI flags.
+  - Loosened minimum `argc` validation in CLI parsing to allow parameters to be completely omitted, falling back to interactive collection.
+  - Integrated `get_password_interactive()` fallbacks inside the parser logic for `create`, `create-hidden`, `open`, `mount`, `write-sector`, and `read-sector` commands.
+- `PROGRESS_LOG.md` (MODIFIED): Session 9 appended.
+
+### Tests run and results
+- Executed `make clean && make all && make test` in WSL Ubuntu environment.
+- All unit and stress tests (crypto, volume, fs, timing, stress) successfully compiled and passed cleanly with no regressions.
+- Pushed updated commits successfully to GitHub.
+
+---
+
 ## Session 8 — 2026-07-17
 
 ### What existed at the start of this session
