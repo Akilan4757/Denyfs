@@ -1,5 +1,36 @@
 # DenyFS Progress Log
 
+## Session 10 — 2026-07-17
+
+### What existed at the start of this session
+- Interactive password prompts implemented, but plaintext `--password` and `--hidden-password` were still left as parsing options on the CLI. The data-block authentication tradeoff was implied rather than explicitly detailed in the threat model. No automated CI workflow existed.
+
+### Scoping decision
+- Completely eliminate `--password` and `--hidden-password` command-line flags. Introduce `--password-fd <fd>` and `--hidden-password-fd <fd>` for secure scripted inputs.
+- Append a detailed appendix to `THREAT_MODEL.md` explaining why omitting data-block authentication is an intentional cryptographic tradeoff to preserve plausible deniability.
+- Add GitHub Actions CI workflow (`.github/workflows/ci.yml`) to automatically compile and run tests on push. Add a live CI status badge to `README.md`.
+
+### What was actually built / changed
+- `src/main.c` (MODIFIED):
+  - Completely removed `--password` and `--hidden-password` command-line argument parsing.
+  - Implemented `read_password_from_fd(fd, out_len)` to parse secure passwords via file descriptor inputs (`--password-fd <fd>` and `--hidden-password-fd <fd>`).
+  - Standardized interactive password promts as the default fallbacks when fd arguments are omitted.
+  - Updated usage text for all CLI commands.
+- `THREAT_MODEL.md` (MODIFIED):
+  - Added Section 9 (Appendix: Data-Block Authentication vs. Plausible Deniability Tradeoff) explaining the cryptographic dilemma: sector-level AEAD/HMAC tags create block expansion or out-of-band metadata structures that leak the existence of encrypted volumes to a coercive adversary. Using unauthenticated AES-256-XTS guarantees ciphertext is structurally indistinguishable from CSPRNG random noise.
+- `.github/workflows/ci.yml` (NEW):
+  - Automated GitHub Actions workflow running on push/PR to main. Compiles the project, runs unit and stress tests under ASan/UBSan, and compiles and runs the benchmark suite.
+- `README.md` (MODIFIED):
+  - Added live GitHub Actions status badge.
+  - Updated all command-line examples and FUSE mounting scripts to reflect the new password-fd / interactive syntax.
+- `PROGRESS_LOG.md` (MODIFIED): Session 10 appended.
+
+### Tests run and results
+- Clean rebuild and full test run via `make clean && make all && make test`. All 30 unit, timing, and stress tests passed successfully.
+- Pushed final updates to GitHub.
+
+---
+
 ## Session 9 — 2026-07-17
 
 ### What existed at the start of this session
