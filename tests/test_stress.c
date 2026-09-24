@@ -7,8 +7,8 @@
  *   3. Corrupted superblock rejection after successful auth.
  *   4. Filesystem stress: create all 63 files, fill to capacity, delete all.
  *   5. Filesystem stress: rapid create/delete cycles.
- *   6. Boundary write: max file size (96KB) write and read-back.
- *   7. Oversized write rejection (beyond 96KB limit).
+ *   6. Sparse 4 GiB file boundary write, read-back, and persistence.
+ *   7. Oversized write and truncate rejection (beyond 4 GiB limit).
  *   8. Name boundary: max-length filename (250 chars).
  *   9. Name boundary: empty and overlength filenames.
  *  10. Concurrent-style interleaved operations (create, write, read, delete loop).
@@ -271,11 +271,11 @@ void test_rapid_create_delete_cycles(void) {
 }
 
 /* ======================================================================== */
-/* Test 6: Max file size write (96KB)                                       */
+/* Test 6: Sparse 4 GiB maximum file size                                    */
 /* ======================================================================== */
 
 void test_max_file_size(void) {
-    printf("[*] Test 6: Max file size boundary (96KB write/read)...\n");
+    printf("[*] Test 6: Sparse 4 GiB file boundary write/read...\n");
 
     int res = denyfs_container_create(STRESS_CONTAINER, STRESS_SIZE_MB,
                                       STRESS_PASSWORD, strlen(STRESS_PASSWORD));
@@ -290,38 +290,64 @@ void test_max_file_size(void) {
     res = denyfs_vol_create(vol, "maxfile.bin", &ino);
     assert(res == 0);
 
-    /* Write exactly 96KB = 24 blocks * 4096 bytes */
-    size_t max_size = DENYFS_DIRECT_BLOCKS * SECTOR_SIZE; /* 98304 */
-    uint8_t *data = malloc(max_size);
-    assert(data != NULL);
-    /* Fill with a non-trivial pattern */
-    for (size_t i = 0; i < max_size; i++) {
-        data[i] = (uint8_t)((i * 7 + 13) & 0xFF);
-    }
+    uint64_t max_size = DENYFS_MAX_FILE_SIZE;
+    uint64_t single_first = (uint64_t)DENYFS_DIRECT_BLOCKS * SECTOR_SIZE + 3;
+    uint64_t single_later = (uint64_t)(DENYFS_DIRECT_BLOCKS + 5) * SECTOR_SIZE + 7;
+    uint8_t marker_single_first = 0x31, marker_single_later = 0x72, marker_double = 0xA5;
+    uint8_t readback = 0;
+    int wr = denyfs_vol_write(vol, ino, &marker_single_first, 1, single_first);
+    assert(wr == 1);
+    wr = denyfs_vol_write(vol, ino, &marker_single_later, 1, single_later);
+    assert(wr == 1);
+    wr = denyfs_vol_write(vol, ino, &marker_double, 1, max_size - 1);
+    assert(wr == 1);
+    assert(vol->inodes[ino].size == max_size);
+    assert(vol->inodes[ino].block_count == 3);
 
-    int wr = denyfs_vol_write(vol, ino, data, max_size, 0);
-    assert(wr == (int)max_size);
+    int rd = denyfs_vol_read(vol, ino, &readback, 1, max_size - 1);
+    assert(rd == 1 && readback == marker_double);
+    uint8_t hole[64];
+    memset(hole, 0xFF, sizeof(hole));
+    rd = denyfs_vol_read(vol, ino, hole, sizeof(hole), 0);
+    assert(rd == (int)sizeof(hole));
+    for (size_t i = 0; i < sizeof(hole); i++) assert(hole[i] == 0);
+    denyfs_vol_close(vol);
 
-    /* Read back and verify full content */
-    uint8_t *readback = malloc(max_size);
-    assert(readback != NULL);
-    int rd = denyfs_vol_read(vol, ino, readback, max_size, 0);
-    assert(rd == (int)max_size);
-    assert(memcmp(data, readback, max_size) == 0);
+    vol = denyfs_vol_open(STRESS_CONTAINER, STRESS_PASSWORD,
+                          strlen(STRESS_PASSWORD), NULL, 0, 0);
+    assert(vol != NULL && vol->inodes[ino].size == max_size);
+    readback = 0;
+    rd = denyfs_vol_read(vol, ino, &readback, 1, max_size - 1);
+    assert(rd == 1 && readback == marker_double);
+    readback = 0;
+    rd = denyfs_vol_read(vol, ino, &readback, 1, single_first);
+    assert(rd == 1 && readback == marker_single_first);
+    readback = 0;
+    rd = denyfs_vol_read(vol, ino, &readback, 1, single_later);
+    assert(rd == 1 && readback == marker_single_later);
 
-    free(data);
-    free(readback);
+    uint64_t keep_single_block = ((uint64_t)DENYFS_DIRECT_BLOCKS + 1) * SECTOR_SIZE;
+    assert(denyfs_vol_truncate(vol, ino, keep_single_block) == 0);
+    assert(vol->inodes[ino].size == keep_single_block);
+    assert(vol->inodes[ino].block_count == 1);
+    readback = 0;
+    rd = denyfs_vol_read(vol, ino, &readback, 1, single_first);
+    assert(rd == 1 && readback == marker_single_first);
+    assert(denyfs_vol_read(vol, ino, &readback, 1, single_later) == 0);
+
+    assert(denyfs_vol_truncate(vol, ino, 0) == 0);
+    assert(vol->inodes[ino].size == 0 && vol->inodes[ino].block_count == 0);
     denyfs_vol_close(vol);
     remove(STRESS_CONTAINER);
-    printf("[+] 96KB max file size write/read verified.\n");
+    printf("[+] 4 GiB sparse file mapping, persistence, and truncate verified.\n");
 }
 
 /* ======================================================================== */
-/* Test 7: Oversized write rejection                                        */
+/* Test 7: Reject files larger than 4 GiB                                    */
 /* ======================================================================== */
 
 void test_oversized_write_rejection(void) {
-    printf("[*] Test 7: Oversized write rejection (>96KB)...\n");
+    printf("[*] Test 7: Oversized file rejection (>4 GiB)...\n");
 
     int res = denyfs_container_create(STRESS_CONTAINER, STRESS_SIZE_MB,
                                       STRESS_PASSWORD, strlen(STRESS_PASSWORD));
@@ -336,23 +362,14 @@ void test_oversized_write_rejection(void) {
     res = denyfs_vol_create(vol, "toobig.bin", &ino);
     assert(res == 0);
 
-    /* Attempt to write 96KB + 1 byte from offset 0 */
-    size_t over_size = DENYFS_DIRECT_BLOCKS * SECTOR_SIZE + 1;
-    uint8_t *data = calloc(1, over_size);
-    assert(data != NULL);
-
-    int wr = denyfs_vol_write(vol, ino, data, over_size, 0);
+    uint8_t value = 0x5A;
+    int wr = denyfs_vol_write(vol, ino, &value, 1, DENYFS_MAX_FILE_SIZE);
     assert(wr == -ENOSPC);
-
-    /* Attempt to write 1 byte past the end of max file capacity */
-    size_t max_size = DENYFS_DIRECT_BLOCKS * SECTOR_SIZE;
-    wr = denyfs_vol_write(vol, ino, data, 1, max_size);
-    assert(wr == -ENOSPC);
-
-    free(data);
+    assert(denyfs_vol_write(vol, ino, &value, 2, DENYFS_MAX_FILE_SIZE - 1) == -ENOSPC);
+    assert(denyfs_vol_truncate(vol, ino, DENYFS_MAX_FILE_SIZE + 1) == -ENOSPC);
     denyfs_vol_close(vol);
     remove(STRESS_CONTAINER);
-    printf("[+] Oversized writes correctly rejected.\n");
+    printf("[+] Writes and truncates beyond 4 GiB correctly rejected.\n");
 }
 
 /* ======================================================================== */

@@ -1,5 +1,6 @@
 # Compiled binaries
 denyfs
+denyfs-release
 test_crypto
 test_volume
 test_fs
@@ -11,6 +12,9 @@ fuzz_sector
 
 # Test container images
 *.img
+
+# Dashboard vaults contain user data; never commit them.
+dashboard/vaults/
 
 # AFL++ fuzzing artifacts
 fuzz_corpus_header/

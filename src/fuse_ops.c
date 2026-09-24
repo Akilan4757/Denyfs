@@ -55,7 +55,7 @@ static int denyfs_fuse_getattr(const char *path, struct stat *stbuf,
     stbuf->st_mode   = S_IFREG | 0644;
     stbuf->st_nlink  = 1;
     stbuf->st_size   = inode->size;
-    stbuf->st_blocks = ((off_t)inode->size + 511) / 512;
+    stbuf->st_blocks = (blkcnt_t)inode->block_count * (SECTOR_SIZE / 512);
     stbuf->st_mtime  = (time_t)inode->mtime;
     stbuf->st_atime  = stbuf->st_mtime;
     stbuf->st_ctime  = stbuf->st_mtime;
@@ -70,8 +70,7 @@ struct readdir_ctx {
 static int readdir_cb(const char *name, uint32_t ino, void *userdata) {
     (void)ino;
     struct readdir_ctx *ctx = (struct readdir_ctx *)userdata;
-    ctx->filler(ctx->buf, name, NULL, 0, 0);
-    return 0;
+    return ctx->filler(ctx->buf, name, NULL, 0, 0);
 }
 
 static int denyfs_fuse_readdir(const char *path, void *buf,
@@ -83,12 +82,11 @@ static int denyfs_fuse_readdir(const char *path, void *buf,
 
     denyfs_volume_t *vol = get_vol();
 
-    filler(buf, ".", NULL, 0, 0);
-    filler(buf, "..", NULL, 0, 0);
+    if (filler(buf, ".", NULL, 0, 0) != 0) return 0;
+    if (filler(buf, "..", NULL, 0, 0) != 0) return 0;
 
     struct readdir_ctx ctx = { .buf = buf, .filler = filler };
-    denyfs_vol_readdir(vol, readdir_cb, &ctx);
-    return 0;
+    return denyfs_vol_readdir(vol, readdir_cb, &ctx);
 }
 
 static int denyfs_fuse_open(const char *path, struct fuse_file_info *fi) {
@@ -105,6 +103,7 @@ static int denyfs_fuse_open(const char *path, struct fuse_file_info *fi) {
 static int denyfs_fuse_read(const char *path, char *buf, size_t size,
                              off_t offset, struct fuse_file_info *fi) {
     (void)fi;
+    if (offset < 0) return -EINVAL;
     const char *name = path_to_name(path);
     if (!name) return -EISDIR;
 
@@ -118,6 +117,7 @@ static int denyfs_fuse_read(const char *path, char *buf, size_t size,
 static int denyfs_fuse_write(const char *path, const char *buf, size_t size,
                               off_t offset, struct fuse_file_info *fi) {
     (void)fi;
+    if (offset < 0) return -EINVAL;
     const char *name = path_to_name(path);
     if (!name) return -EISDIR;
 
@@ -150,6 +150,8 @@ static int denyfs_fuse_unlink(const char *path) {
 static int denyfs_fuse_truncate(const char *path, off_t size,
                                  struct fuse_file_info *fi) {
     (void)fi;
+    if (size < 0) return -EINVAL;
+    if ((uint64_t)size > DENYFS_MAX_FILE_SIZE) return -ENOSPC;
     const char *name = path_to_name(path);
     if (!name) return -EISDIR;
 
@@ -157,7 +159,7 @@ static int denyfs_fuse_truncate(const char *path, off_t size,
     uint32_t ino;
     if (denyfs_vol_lookup(vol, name, &ino) != 0) return -ENOENT;
 
-    return denyfs_vol_truncate(vol, ino, (uint32_t)size);
+    return denyfs_vol_truncate(vol, ino, (uint64_t)size);
 }
 
 static void denyfs_fuse_destroy(void *private_data) {

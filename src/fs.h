@@ -11,9 +11,13 @@
 #define DENYFS_MAX_NAME_LEN     251   // field size; max filename = 250 chars + null
 #define DENYFS_INODE_SIZE       128
 #define DENYFS_DIRENT_SIZE      256
-#define DENYFS_DIRECT_BLOCKS    24    // max file size = 24 * 4096 = 98304 bytes
+#define DENYFS_DIRECT_BLOCKS    20    // root directory blocks and per-file direct pointers
+#define DENYFS_POINTERS_PER_BLOCK (SECTOR_SIZE / sizeof(uint32_t))
+#define DENYFS_MAX_FILE_BLOCKS  ((uint64_t)DENYFS_DIRECT_BLOCKS + DENYFS_POINTERS_PER_BLOCK + \
+                                 (uint64_t)DENYFS_POINTERS_PER_BLOCK * DENYFS_POINTERS_PER_BLOCK)
+#define DENYFS_MAX_FILE_SIZE    (4ULL * 1024ULL * 1024ULL * 1024ULL)
 #define DENYFS_DIRENTS_PER_BLOCK (SECTOR_SIZE / DENYFS_DIRENT_SIZE)  // 16
-#define DENYFS_SB_MAGIC         0x44656e7946533032ULL  // 'DenyFS02'
+#define DENYFS_SB_MAGIC         0x44656e7946533033ULL  // 'DenyFS03'
 #define DENYFS_HMAC_SIZE        32
 #define DENYFS_INVALID_INO      0xFFFFFFFFU
 #define DENYFS_INVALID_BLOCK    0xFFFFFFFFU
@@ -49,11 +53,13 @@ typedef struct {
 // Inode — 128 bytes each, DENYFS_MAX_INODES per volume
 typedef struct {
     uint32_t type;                        // DENYFS_ITYPE_*
-    uint32_t size;                        // file size in bytes
-    uint32_t block_count;                 // allocated blocks
-    uint32_t direct[DENYFS_DIRECT_BLOCKS]; // absolute block numbers (DENYFS_INVALID_BLOCK = unalloc)
+    uint64_t size;                        // file size in bytes
+    uint32_t block_count;                 // allocated file-data blocks (not pointer-table blocks)
+    uint32_t direct[DENYFS_DIRECT_BLOCKS]; // direct absolute block numbers
+    uint32_t indirect_block;              // single-indirect pointer block
+    uint32_t double_indirect_block;        // double-indirect pointer block
     uint64_t mtime;                       // modification time (unix epoch)
-    uint8_t  reserved[DENYFS_INODE_SIZE - 12 - DENYFS_DIRECT_BLOCKS * 4 - 8];
+    uint8_t  reserved[DENYFS_INODE_SIZE - 4 - 8 - 4 - DENYFS_DIRECT_BLOCKS * 4 - 4 - 4 - 8];
 } denyfs_inode_t;
 
 // Directory entry — 256 bytes each, 16 per block
@@ -87,6 +93,8 @@ typedef struct {
     denyfs_superblock_t sb;                        // in-memory superblock
     uint8_t    *bitmap;                            // in-memory allocation bitmap
     size_t      bitmap_bytes;                      // total bitmap buffer size
+    uint8_t    *bitmap_dirty;                       // one flag per on-disk bitmap sector
+    size_t      bitmap_dirty_count;
     denyfs_inode_t inodes[DENYFS_MAX_INODES];      // in-memory inode table
     uint64_t    vol_start_offset;                  // absolute byte offset to volume data region
     int         is_hidden;                         // 1 if this is a hidden volume mount
@@ -122,7 +130,7 @@ denyfs_volume_t *denyfs_vol_open(const char *path,
 // Flush all in-memory metadata to disk (superblock, bitmap+HMAC, inode table).
 int denyfs_vol_flush(denyfs_volume_t *vol);
 
-// Flush and close volume, wipe keys, free struct.
+// Close volume without an implicit metadata write, wipe keys, and free struct.
 void denyfs_vol_close(denyfs_volume_t *vol);
 
 // Look up a filename in the root directory. Returns 0 on hit.
@@ -143,7 +151,7 @@ int denyfs_vol_write(denyfs_volume_t *vol, uint32_t ino,
                      const void *buf, size_t size, uint64_t offset);
 
 // Truncate (or extend) a file. Returns 0 on success.
-int denyfs_vol_truncate(denyfs_volume_t *vol, uint32_t ino, uint32_t new_size);
+int denyfs_vol_truncate(denyfs_volume_t *vol, uint32_t ino, uint64_t new_size);
 
 // Iterate root directory entries, calling cb for each.
 int denyfs_vol_readdir(denyfs_volume_t *vol, denyfs_readdir_cb cb, void *userdata);

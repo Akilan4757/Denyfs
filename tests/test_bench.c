@@ -1,5 +1,5 @@
 /*
- * Phase 7 (brain file Phase 8): Benchmarks
+ * Phase 8: Benchmarks
  *
  * Measures and reports:
  *   1. Container creation time — CSPRNG fill time vs crypto setup time (separate).
@@ -108,7 +108,7 @@ static void bench_container_creation(void) {
     printf("  Best:   %.2f ms\n", best);
     printf("  Worst:  %.2f ms\n", worst);
     printf("  Note:   Dominated by CSPRNG fill (%d MB of random bytes)\n", BENCH_SIZE_MB);
-    printf("          + Argon2id KDF (~300-400ms) + AES-256-GCM header encrypt\n");
+    printf("          + Argon2id KDF + AES-256-GCM header encrypt\n");
     printf("          + filesystem format (superblock + bitmap + inode table XTS encrypt)\n\n");
 
     remove(BENCH_CONTAINER);
@@ -168,10 +168,10 @@ static void bench_mount_time(void) {
     printf("  VmPeak:      %ld KB (%.1f MB)\n", peak_mem, peak_mem / 1024.0);
     printf("  VmRSS pre:   %ld KB\n", mem_before);
     printf("  VmRSS post:  %ld KB\n", mem_after);
-    printf("  Note:        vol_open runs TWO Argon2id KDF calls (outer + hidden header)\n");
-    printf("               by design for timing indistinguishability. Each call uses\n");
-    printf("               %d MB of memory. Total expected: ~%d MB peak.\n\n",
-           ARGON2_MEMLIMIT / (1024 * 1024), 2 * ARGON2_MEMLIMIT / (1024 * 1024));
+    printf("  Note:        vol_open attempts both header paths with two sequential KDF calls.\n");
+    printf("               Each call has a %d MB memory limit; that is not necessarily\n",
+           ARGON2_MEMLIMIT / (1024 * 1024));
+    printf("               simultaneous memory use. VmPeak above is the measured process peak.\n\n");
 
     remove(BENCH_CONTAINER);
 }
@@ -193,11 +193,11 @@ static void bench_write_throughput(void) {
                                             NULL, 0, 0);
     if (!vol) { fprintf(stderr, "[-] Open failed\n"); return; }
 
-    /* Create a file and write as much data as possible (up to 96KB max file size) */
+    /* Keep the historical 96 KiB measurement size for comparison. */
     uint32_t ino;
     denyfs_vol_create(vol, "bench_write.bin", &ino);
 
-    size_t max_file = (size_t)DENYFS_DIRECT_BLOCKS * SECTOR_SIZE; /* 96KB */
+    size_t max_file = 96 * 1024;
     uint8_t *data = malloc(SECTOR_SIZE);
     if (!data) { denyfs_vol_close(vol); return; }
     memset(data, 0xAB, SECTOR_SIZE);
@@ -260,11 +260,11 @@ static void bench_read_throughput(void) {
                                             NULL, 0, 0);
     if (!vol) { fprintf(stderr, "[-] Open failed\n"); return; }
 
-    /* Create and fill a file with 96KB of data */
+    /* Create and fill a file with 96 KiB of data */
     uint32_t ino;
     denyfs_vol_create(vol, "bench_read.bin", &ino);
 
-    size_t max_file = (size_t)DENYFS_DIRECT_BLOCKS * SECTOR_SIZE;
+    size_t max_file = 96 * 1024;
     uint8_t *write_buf = malloc(SECTOR_SIZE);
     uint8_t *read_buf  = malloc(SECTOR_SIZE);
     if (!write_buf || !read_buf) {
@@ -421,7 +421,7 @@ int main(void) {
     }
 
     printf("╔══════════════════════════════════════════════════════╗\n");
-    printf("║        DenyFS Phase 7: Performance Benchmarks        ║\n");
+    printf("║        DenyFS Phase 8: Performance Benchmarks        ║\n");
     printf("╚══════════════════════════════════════════════════════╝\n\n");
 
     printf("System: ");

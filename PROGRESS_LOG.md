@@ -1,5 +1,69 @@
 # DenyFS Progress Log
 
+## Session 14 - Local encrypt/decrypt dashboard
+
+### What changed
+- Added a responsive, Apple-inspired dashboard with a documented DenyFS blue, secure mint, neutral glass, violet, and coral palette; liquid-glass surfaces, restrained motion, and reduced-motion support.
+- Added a loopback-only Python API that uses the existing `denyfs-release` binary and FUSE mount. Users can select and stream files into a newly created encrypted container, import/export containers, unlock outer or hidden volumes, download decrypted files, and lock/unmount a vault.
+- Passphrases travel over a local pipe to the CLI rather than command-line arguments or request logs. The dashboard stores containers under the Linux user's private data directory and puts temporary mounts on a Linux filesystem, which works better in WSL than mounting under `/mnt/c`.
+- Added dashboard setup/use documentation and ignored the optional in-repository vault folder so user containers are not committed accidentally.
+
+### Verification and remaining limits
+- The Python server and JavaScript bundle received syntax checks.
+- The dashboard workflow itself has not been exercised end to end in this session; it requires a Linux/WSL2 release binary, `/dev/fuse`, and `fusermount3`.
+- DenyFS remains limited to 63 flat files per vault and 4 GiB per file. Decrypted downloads are plaintext in the browser's normal download location.
+
+## Session 13 - 4 GiB file support
+
+### What changed
+- Replaced the 24-block per-file ceiling with 20 direct pointers plus single- and double-indirect pointer tables. Files now have a 64-bit size and support up to 4 GiB each while retaining the 64-entry inode table.
+- Updated metadata validation, allocation, reads/writes, truncation, unlink, and FUSE size handling for indirect blocks. Sparse extension avoids allocating all intervening blocks; reads from holes return zeroes.
+- Bumped the superblock format to DenyFS03 and documented that DenyFS02 containers require export/recreation with the old build; no automatic migration is provided.
+- Marked bitmap sectors dirty and flushes only changed bitmap sectors, reducing write overhead for larger volumes.
+- Added stress coverage for single- and double-indirect addressing, the last byte of a 4 GiB file, persistence across reopen, sparse holes, truncation, and rejection beyond the limit.
+- Updated user docs with the practical container sizing example: an 8203 MiB container and a 4101 MiB hidden volume can fit a fully allocated 4 GiB file.
+
+### Verification and remaining limits
+- `make all` compiled the updated code without warnings.
+- `make test` passed; the sparse 4 GiB boundary and indirect-map stress cases passed without allocating a 4 GiB test file.
+- `make test-fuse` passed, including writing and reading the last byte of a 4 GiB sparse file through a live mount.
+- Refreshed the `-O2` benchmark results on WSL2. The measured 96 KiB sequential workload averaged 1.91 MB/s write and 14.47 MB/s read; this is not a full 4 GiB fill benchmark.
+- Full 4 GiB physical fill and an 8 GiB container creation were not run; container creation random-fills every byte and requires more than 8 GiB of free space for the documented example.
+- AFL++ campaigns remain unrun because AFL++ is not installed in the WSL environment.
+
+## Session 12 - Runtime suite and live FUSE smoke test
+
+### What changed
+- Interleaved the paired timing measurements and warmed both wrong-password paths before sampling. Sequential groups showed order-dependent noise; the interleaved run passed the existing 15 ms regression threshold with a 2.28 ms mean difference.
+- Added `tests/test_fuse_mount.sh` and the optional `make test-fuse` target. The smoke test exercises a live mount plus create, write, read, truncate, directory listing, unlink, and unmount using a temporary container.
+- Updated the build plan, README, and threat model with current verification results and the remaining fuzzing limits.
+
+### Verification and remaining limits
+- `make all` completed successfully in WSL Ubuntu.
+- `make test` passed all five suites: crypto, volume, filesystem, timing, and stress.
+- `make test-fuse` passed on WSL Ubuntu with `/dev/fuse` and `fusermount3`.
+- AFL++ is not installed, so extended fuzz campaigns remain unrun. The header harness does not cover the full volume-open metadata parser; the FUSE smoke test is not exhaustive fuzz coverage.
+- This verification is not a security audit. The filesystem still has no crash journal, file data is not authenticated, and the implementation does not establish universal deniability.
+
+## Session 11 — Current-state guide and safety review
+
+### What changed
+- Added `PROJECT_GUIDE.md`, a plain-language walkthrough from the container idea to the crypto, filesystem, mount, and threat-model details.
+- Hardened volume opening in `src/fs.c`: reject undersized or unaligned containers, validate authenticated volume ranges and superblock layout before using on-disk sizes, verify bitmap allocation counts, and validate inode and directory references before mount.
+- Made the close operation side-effect free. Metadata is flushed by explicit filesystem operations and the FUSE shutdown callback, not by a successful or failed password check.
+- Rejected dangerous file offsets and sizes, protected against arithmetic overflow in writes, zeroed the retained block tail on truncate, and validated directory records before using names.
+- Container creation now refuses to replace an existing path and creates the file with owner-only permissions. Reusing the same outer and hidden password is rejected.
+- A requested protected mount now fails if it cannot authenticate the hidden header. Core-dump limit failure is reported to the user.
+- Updated README, architecture, and threat-model wording to match the code. In particular, the two-header attempt is described as a shared cryptographic work shape, not fixed-time proof; the timing test is described as a small regression check.
+
+### Verification and remaining limits
+- `make all` completed successfully in WSL Ubuntu after the changes, compiling the sanitizer-enabled CLI, hardened release CLI, test binaries, fuzz harnesses, and benchmark. No test executables or fuzz campaigns were run during this session; run `make test` on Linux before release.
+- The existing FUSE callback layer has not been exercised by a live mount on this host. Extended AFL++ campaigns have not been run, and the existing header harness does not cover the complete volume-open metadata parser.
+- The filesystem is not journaled; power loss during metadata writes can leave inconsistent state. AES-XTS does not authenticate file data, and the bitmap HMAC does not cover all metadata.
+- Do not interpret this entry as a security audit or as proof of plausible deniability.
+
+---
+
 ## Session 10 — 2026-07-17
 
 ### What existed at the start of this session

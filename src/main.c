@@ -327,7 +327,9 @@ int main(int argc, char **argv) {
     struct rlimit lim;
     lim.rlim_cur = 0;
     lim.rlim_max = 0;
-    setrlimit(RLIMIT_CORE, &lim);
+    if (setrlimit(RLIMIT_CORE, &lim) != 0) {
+        fprintf(stderr, "Warning: could not disable core dumps on this system.\n");
+    }
 
     if (denyfs_crypto_init() != 0) {
         fprintf(stderr, "Error: Cryptographic library initialization failed.\n");
@@ -599,5 +601,4 @@ int main(int argc, char **argv) {
         return 1;
     }
 }
-
 

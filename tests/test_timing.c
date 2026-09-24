@@ -47,32 +47,29 @@ int main(void) {
     uint64_t times_outer_only[TIMING_TRIALS];
     uint64_t times_both[TIMING_TRIALS];
 
-    // Warm-up iteration to ensure code is page-cached
+    // Warm up both paths so page-cache and one-time initialization costs are
+    // not concentrated in one measurement group.
     denyfs_volume_t *vol_warmup = denyfs_vol_open(img_outer_only, wrong_pass, strlen(wrong_pass), NULL, 0, 0);
     if (vol_warmup) denyfs_vol_close(vol_warmup);
+    vol_warmup = denyfs_vol_open(img_both, wrong_pass, strlen(wrong_pass), NULL, 0, 0);
+    if (vol_warmup) denyfs_vol_close(vol_warmup);
 
-    // 3. Measure outer-only timing
-    printf("[*] Measuring timing on outer-only container (wrong password)...\n");
+    // 3. Interleave paired measurements to reduce drift from CPU frequency,
+    // thermal changes, and background load during the several-minute run.
+    printf("[*] Measuring interleaved wrong-password opens...\n");
     for (int i = 0; i < TIMING_TRIALS; i++) {
-        uint64_t start = get_time_us();
-        denyfs_volume_t *vol = denyfs_vol_open(img_outer_only, wrong_pass, strlen(wrong_pass), NULL, 0, 0);
-        uint64_t end = get_time_us();
-        
-        // Assert that decryption failed
-        assert(vol == NULL);
-        times_outer_only[i] = end - start;
-    }
-
-    // 4. Measure both timing
-    printf("[*] Measuring timing on container with hidden volume (wrong password)...\n");
-    for (int i = 0; i < TIMING_TRIALS; i++) {
-        uint64_t start = get_time_us();
-        denyfs_volume_t *vol = denyfs_vol_open(img_both, wrong_pass, strlen(wrong_pass), NULL, 0, 0);
-        uint64_t end = get_time_us();
-        
-        // Assert that decryption failed
-        assert(vol == NULL);
-        times_both[i] = end - start;
+        int outer_first = (i % 2) == 0;
+        for (int sample = 0; sample < 2; sample++) {
+            int measure_outer = (sample == 0) ? outer_first : !outer_first;
+            const char *image = measure_outer ? img_outer_only : img_both;
+            uint64_t start = get_time_us();
+            denyfs_volume_t *vol = denyfs_vol_open(image, wrong_pass,
+                                                    strlen(wrong_pass), NULL, 0, 0);
+            uint64_t end = get_time_us();
+            assert(vol == NULL);
+            if (measure_outer) times_outer_only[i] = end - start;
+            else times_both[i] = end - start;
+        }
     }
 
     // 5. Calculate statistics

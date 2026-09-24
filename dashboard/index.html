@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#eef3fa">
+  <meta name="description" content="A private, local dashboard for DenyFS encrypted vaults.">
+  <title>DenyFS — Private storage</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div class="ambient ambient-blue" aria-hidden="true"></div>
+  <div class="ambient ambient-mint" aria-hidden="true"></div>
+  <div class="shell">
+    <aside class="sidebar glass-panel" aria-label="Main navigation">
+      <a class="brand" href="#overview" data-view="overview" aria-label="DenyFS overview">
+        <span class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 32 32" fill="none"><path d="M16 3.5 27 8v7.2c0 7.2-4.6 11.7-11 14.3C9.6 26.9 5 22.4 5 15.2V8l11-4.5Z" stroke="currentColor" stroke-width="1.7"/><path d="M12.1 15.2v-2a3.9 3.9 0 0 1 7.8 0v2m-8.7 0h9.6v6.3h-9.6v-6.3Z" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </span>
+        <span class="brand-copy"><strong>DenyFS</strong><small>Private storage</small></span>
+      </a>
+
+      <div class="nav-label">WORKSPACE</div>
+      <nav class="nav-list">
+        <button class="nav-item is-active" type="button" data-view="overview" aria-label="Overview">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="3.5" width="7" height="7" rx="2"/><rect x="13.5" y="3.5" width="7" height="7" rx="2"/><rect x="3.5" y="13.5" width="7" height="7" rx="2"/><rect x="13.5" y="13.5" width="7" height="7" rx="2"/></svg><span>Overview</span>
+        </button>
+        <button class="nav-item" type="button" data-view="encrypt" aria-label="Encrypt files">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5 20 7v5.3c0 5.2-3.3 8.3-8 10.2-4.7-1.9-8-5-8-10.2V7l8-3.5Z"/><path d="m9 12.1 2 2 4.2-4.4"/></svg><span>Encrypt files</span>
+        </button>
+        <button class="nav-item" type="button" data-view="decrypt" aria-label="Unlock vault">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="10" width="16" height="10.5" rx="2.5"/><path d="M8 10V7.3a4 4 0 0 1 8 0V10m-4 4v2.5"/></svg><span>Unlock vault</span>
+        </button>
+        <button class="nav-item" type="button" data-view="library" aria-label="Vault library">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7.5h6l1.8 2H20v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-11Z"/><path d="M4 10h16"/></svg><span>Vault library</span><span class="nav-count" id="nav-vault-count">0</span>
+        </button>
+      </nav>
+
+      <div class="sidebar-spacer"></div>
+      <div class="local-card">
+        <span class="local-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5 20 7v5.3c0 5.2-3.3 8.3-8 10.2-4.7-1.9-8-5-8-10.2V7l8-3.5Z"/><path d="m9 12.1 2 2 4.2-4.4"/></svg></span>
+        <div><strong>On this device</strong><span>Files stay local</span></div>
+        <span class="online-dot" title="Dashboard is connected"></span>
+      </div>
+      <div class="sidebar-foot">DenyFS dashboard <span>v1.0</span></div>
+    </aside>
+
+    <main class="main-content">
+      <header class="topbar">
+        <div class="breadcrumb"><span>Workspace</span><span class="crumb-slash">/</span><strong id="breadcrumb-current">Overview</strong></div>
+        <div class="topbar-right">
+          <button class="top-lock-button" id="top-lock-button" type="button" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="10" width="16" height="10.5" rx="2.5"/><path d="M8 10V7.3a4 4 0 0 1 8 0V10"/></svg> Lock vault</button>
+          <div class="connection-pill" id="connection-pill"><span class="connection-light"></span><span id="connection-label">Connecting locally</span></div>
+          <button class="avatar" type="button" aria-label="Local device">D</button>
+        </div>
+      </header>
+
+      <section class="page-view is-visible" id="view-overview" aria-labelledby="page-title">
+        <div class="welcome-row">
+          <div>
+            <p class="eyebrow"><span class="eyebrow-spark"></span> YOUR PRIVATE WORKSPACE</p>
+            <h1 id="page-title">Your files.<br><span>Your space.</span></h1>
+            <p class="welcome-copy">Encrypt files into a private DenyFS vault, or unlock one to get them back.</p>
+          </div>
+          <div class="hero-orb-wrap" aria-hidden="true">
+            <div class="hero-orb"><div class="orb-ring ring-one"></div><div class="orb-ring ring-two"></div><div class="orb-lock"><svg viewBox="0 0 64 64" fill="none"><path d="M20 28v-7a12 12 0 1 1 24 0v7" stroke="currentColor" stroke-width="4" stroke-linecap="round"/><rect x="14" y="27" width="36" height="28" rx="8" fill="currentColor"/><circle cx="32" cy="40" r="3.5" fill="#dceaff"/><path d="M32 43v5" stroke="#dceaff" stroke-width="3" stroke-linecap="round"/></svg></div></div>
+            <span class="orb-caption">ENCRYPTED BY DESIGN</span>
+          </div>
+        </div>
+
+        <div class="stat-grid" aria-label="DenyFS capabilities">
+          <article class="stat-card glass-panel"><span class="stat-icon blue"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5 20 7v5.3c0 5.2-3.3 8.3-8 10.2-4.7-1.9-8-5-8-10.2V7l8-3.5Z"/><path d="m9 12.1 2 2 4.2-4.4"/></svg></span><div><span class="stat-label">Maximum file size</span><strong>4 <small>GiB</small></strong><span class="stat-note">Sparse files supported</span></div></article>
+          <article class="stat-card glass-panel"><span class="stat-icon mint"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="14" rx="3"/><path d="M8 9h8M8 13h5"/></svg></span><div><span class="stat-label">Files per vault</span><strong>63 <small>files</small></strong><span class="stat-note">Flat folder structure</span></div></article>
+          <article class="stat-card glass-panel"><span class="stat-icon violet"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 7v5l3.4 2"/></svg></span><div><span class="stat-label">Data processing</span><strong class="stat-word">On device</strong><span class="stat-note">No cloud account required</span></div></article>
+        </div>
+
+        <div class="section-heading"><div><p class="eyebrow">GET STARTED</p><h2>What would you like to do?</h2></div><span class="section-helper">Choose a secure workflow</span></div>
+        <div class="action-grid">
+          <button class="action-card encrypt-card glass-panel" type="button" data-view="encrypt">
+            <span class="action-top"><span class="action-icon blue"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5 20 7v5.3c0 5.2-3.3 8.3-8 10.2-4.7-1.9-8-5-8-10.2V7l8-3.5Z"/><path d="m9 12.1 2 2 4.2-4.4"/></svg></span><span class="action-arrow">↗</span></span>
+            <span class="action-title">Encrypt files</span><span class="action-copy">Choose files and create a new encrypted vault.</span><span class="action-link">Create a vault <span>→</span></span>
+          </button>
+          <button class="action-card decrypt-card glass-panel" type="button" data-view="decrypt">
+            <span class="action-top"><span class="action-icon mint"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="10" width="16" height="10.5" rx="2.5"/><path d="M8 10V7.3a4 4 0 0 1 8 0V10m-4 4v2.5"/></svg></span><span class="action-arrow">↗</span></span>
+            <span class="action-title">Decrypt files</span><span class="action-copy">Unlock a vault, then save files back to your device.</span><span class="action-link">Open a vault <span>→</span></span>
+          </button>
+        </div>
+        <div class="overview-bottom">
+          <div class="inline-security glass-panel"><span class="security-check"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.2 4.2L19 7"/></svg></span><div><strong>Your passphrase stays yours</strong><p>It is not saved by the dashboard. Lock a vault when you finish.</p></div><span class="inline-arrow">⌘</span></div>
+          <div class="library-mini glass-panel"><div class="mini-heading"><strong>Vault library</strong><button type="button" data-view="library">View all <span>→</span></button></div><div id="mini-vaults" class="mini-vaults"><div class="empty-mini">Your local vaults will show here.</div></div></div>
+        </div>
+      </section>
+
+      <section class="page-view" id="view-encrypt" aria-labelledby="encrypt-title">
+        <div class="page-intro"><p class="eyebrow"><span class="eyebrow-spark"></span> PRIVATE STORAGE</p><h1 id="encrypt-title">Create a vault.</h1><p>Choose the files you want to protect. DenyFS encrypts them inside a new local container.</p></div>
+        <div class="workflow-layout">
+          <div class="workflow-main glass-panel">
+            <div class="step-heading"><span class="step-number">01</span><div><h2>Add files</h2><p>Up to 63 files · 4 GiB per file · flat folder</p></div></div>
+            <input id="encrypt-file-input" class="visually-hidden" type="file" multiple>
+            <div class="dropzone" id="dropzone" tabindex="0" role="button" aria-label="Choose files to encrypt">
+              <span class="drop-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5"/><path d="M5 14v4.5A1.5 1.5 0 0 0 6.5 20h11a1.5 1.5 0 0 0 1.5-1.5V14"/></svg></span>
+              <strong>Drop files here</strong><span>or <button class="text-button" id="browse-files" type="button">browse your device</button></span>
+              <small>Files are sent only to this device's local dashboard.</small>
+            </div>
+            <div class="selected-files-wrap" id="selected-files-wrap" hidden>
+              <div class="file-list-heading"><strong id="selected-count">Selected files</strong><button type="button" class="text-button" id="clear-files">Clear all</button></div>
+              <ul id="selected-files" class="selected-files"></ul>
+              <div class="file-total-row"><span>Total selected</span><strong id="selected-total">0 B</strong></div>
+            </div>
+
+            <div class="step-heading step-heading-spaced"><span class="step-number">02</span><div><h2>Set up your vault</h2><p>Choose its name, size, and passphrase.</p></div></div>
+            <div class="form-grid">
+              <label class="field-label" for="vault-name">Vault name<span class="field-input-wrap"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7.5h6l1.8 2H20v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-11Z"/><path d="M4 10h16"/></svg><input id="vault-name" value="My private vault" maxlength="64" autocomplete="off" spellcheck="false"></span></label>
+              <label class="field-label" for="vault-size">Container size<span class="field-input-wrap size-wrap"><input id="vault-size" type="number" min="8" max="65536" step="1" value="64" inputmode="numeric"><span class="unit">MiB</span></span><span class="field-help" id="capacity-hint">About 32 MiB available for files.</span></label>
+              <label class="field-label" for="encrypt-password">Passphrase<span class="field-input-wrap"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="10" width="16" height="10.5" rx="2.5"/><path d="M8 10V7.3a4 4 0 0 1 8 0V10"/></svg><input id="encrypt-password" type="password" autocomplete="new-password" placeholder="Create a strong passphrase"><button class="reveal-button" type="button" data-reveal="encrypt-password" aria-label="Show passphrase"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.3-6 9.5-6 9.5 6 9.5 6-3.3 6-9.5 6-9.5-6-9.5-6Z"/><circle cx="12" cy="12" r="2.5"/></svg></button></span><span class="field-help">Use a memorable phrase with 12 or more characters.</span></label>
+              <label class="field-label" for="confirm-password">Confirm passphrase<span class="field-input-wrap"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.2 4.2L19 7"/></svg><input id="confirm-password" type="password" autocomplete="new-password" placeholder="Enter it again"></span></label>
+            </div>
+            <div class="capacity-note"><span class="note-dot"></span><span>DenyFS uses about half of the container for this vault. Actual free space is slightly lower because filesystem metadata also needs room.</span></div>
+            <div class="form-error" id="encrypt-error" role="alert" hidden></div>
+            <div class="workflow-footer"><div class="privacy-caption"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5 20 7v5.3c0 5.2-3.3 8.3-8 10.2-4.7-1.9-8-5-8-10.2V7l8-3.5Z"/><path d="m9 12.1 2 2 4.2-4.4"/></svg><span>Local processing<br><small>Your files are not sent to a cloud service.</small></span></div><button class="primary-button" id="encrypt-submit" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="10" width="16" height="10.5" rx="2.5"/><path d="M8 10V7.3a4 4 0 0 1 8 0V10"/></svg><span>Encrypt files</span><span class="button-arrow">→</span></button></div>
+          </div>
+          <aside class="workflow-aside">
+            <div class="aside-card glass-panel"><div class="aside-icon blue"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5 20 7v5.3c0 5.2-3.3 8.3-8 10.2-4.7-1.9-8-5-8-10.2V7l8-3.5Z"/><path d="m9 12.1 2 2 4.2-4.4"/></svg></div><h3>Protection, built in</h3><p>DenyFS encrypts the whole container with AES-256-XTS. A password-derived key protects access to your vault.</p><div class="aside-divider"></div><div class="aside-spec"><span>Encryption</span><strong>AES-256-XTS</strong></div><div class="aside-spec"><span>Key derivation</span><strong>Argon2id</strong></div><div class="aside-spec"><span>File limit</span><strong>4 GiB each</strong></div></div>
+            <div class="aside-card tip-card glass-panel"><span class="tip-icon">✦</span><div><strong>Passphrase tip</strong><p>Four or five unrelated words are easier to remember and harder to guess than a short password.</p></div></div>
+          </aside>
+        </div>
+      </section>
+
+      <section class="page-view" id="view-decrypt" aria-labelledby="decrypt-title">
+        <div class="page-intro"><p class="eyebrow"><span class="eyebrow-spark mint-spark"></span> YOUR FILES, RESTORED</p><h1 id="decrypt-title">Open a vault.</h1><p>Unlock a local DenyFS container with its passphrase, then download the files you need.</p></div>
+        <div class="decrypt-layout">
+          <div class="workflow-main glass-panel decrypt-main">
+            <div class="step-heading"><span class="step-number mint-step">01</span><div><h2>Choose a vault</h2><p>Select a saved vault or import a container from this device.</p></div></div>
+            <label class="field-label" for="decrypt-vault">Vault library<span class="field-input-wrap select-wrap"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7.5h6l1.8 2H20v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-11Z"/><path d="M4 10h16"/></svg><select id="decrypt-vault"><option value="">Loading local vaults…</option></select><span class="select-chevron">⌄</span></span></label>
+            <div class="import-row"><div class="import-copy"><span class="import-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5"/><path d="M5 14v4.5A1.5 1.5 0 0 0 6.5 20h11a1.5 1.5 0 0 0 1.5-1.5V14"/></svg></span><span><strong>Import an existing container</strong><small>Large files are copied to the local vault library.</small></span></div><input id="import-vault-input" class="visually-hidden" type="file" accept=".denyfs,.img,.dny"><button class="secondary-button" id="import-vault-button" type="button">Choose file</button></div>
+            <div class="import-progress" id="import-progress" hidden><div class="progress-track"><span id="import-progress-bar"></span></div><div><span id="import-progress-label">Importing…</span><span id="import-progress-percent">0%</span></div></div>
+            <div class="step-heading step-heading-spaced"><span class="step-number mint-step">02</span><div><h2>Unlock securely</h2><p>Your passphrase is used only to open this vault.</p></div></div>
+            <label class="field-label" for="decrypt-password">Vault passphrase<span class="field-input-wrap"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="10" width="16" height="10.5" rx="2.5"/><path d="M8 10V7.3a4 4 0 0 1 8 0V10"/></svg><input id="decrypt-password" type="password" autocomplete="current-password" placeholder="Enter the passphrase"><button class="reveal-button" type="button" data-reveal="decrypt-password" aria-label="Show passphrase"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.3-6 9.5-6 9.5 6 9.5 6-3.3 6-9.5 6-9.5-6-9.5-6Z"/><circle cx="12" cy="12" r="2.5"/></svg></button></span></label>
+            <div class="form-error" id="decrypt-error" role="alert" hidden></div>
+            <button class="primary-button unlock-button" id="decrypt-submit" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="10" width="16" height="10.5" rx="2.5"/><path d="M8 10V7.3a4 4 0 0 1 8 0V10m4.5 3h-3"/></svg><span>Unlock vault</span><span class="button-arrow">→</span></button>
+            <div class="opened-vault" id="opened-vault" hidden>
+              <div class="opened-heading"><div><span class="eyebrow">VAULT UNLOCKED</span><h3 id="opened-vault-name">Vault files</h3></div><button class="lock-button" id="lock-vault" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="10" width="16" height="10.5" rx="2.5"/><path d="M8 10V7.3a4 4 0 0 1 8 0V10"/></svg> Lock vault</button></div>
+              <div class="plaintext-notice"><span>!</span><p>Downloaded files are decrypted and saved by your browser. Choose a trusted location.</p></div>
+              <ul class="decrypted-files" id="decrypted-files"></ul>
+            </div>
+          </div>
+          <aside class="workflow-aside"><div class="aside-card glass-panel"><div class="aside-icon mint"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5 20 7v5.3c0 5.2-3.3 8.3-8 10.2-4.7-1.9-8-5-8-10.2V7l8-3.5Z"/><path d="m9 12.1 2 2 4.2-4.4"/></svg></div><h3>Your vault opens locally</h3><p>Files are read from the mounted DenyFS vault. The passphrase is not written to the dashboard library.</p><div class="aside-divider"></div><div class="aside-spec"><span>Access</span><strong>Passphrase required</strong></div><div class="aside-spec"><span>After decrypting</span><strong>Lock the vault</strong></div></div><div class="aside-card tip-card glass-panel"><span class="tip-icon mint-tip">↗</span><div><strong>Need a container?</strong><p>Create one on the Encrypt files page or import an existing DenyFS container above.</p></div></div></aside>
+        </div>
+      </section>
+
+      <section class="page-view" id="view-library" aria-labelledby="library-title">
+        <div class="page-intro library-intro"><div><p class="eyebrow"><span class="eyebrow-spark"></span> STORED ON THIS DEVICE</p><h1 id="library-title">Vault library.</h1><p>Your encrypted container files, saved locally by this dashboard.</p></div><button class="secondary-button" id="library-import-button" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5"/><path d="M5 14v4.5A1.5 1.5 0 0 0 6.5 20h11a1.5 1.5 0 0 0 1.5-1.5V14"/></svg> Import vault</button></div>
+        <div class="library-banner glass-panel"><span class="library-banner-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5 20 7v5.3c0 5.2-3.3 8.3-8 10.2-4.7-1.9-8-5-8-10.2V7l8-3.5Z"/><path d="m9 12.1 2 2 4.2-4.4"/></svg></span><div><strong>Encrypted containers stay on this device</strong><p>The dashboard stores vault files in its local library. Use Export to copy a container elsewhere.</p></div><span class="local-tag"><span></span> LOCAL</span></div>
+        <div class="library-list glass-panel" id="library-list"><div class="library-empty"><span class="empty-orbit"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7.5h6l1.8 2H20v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-11Z"/><path d="M4 10h16"/></svg></span><h3>No vaults yet</h3><p>Create a vault to encrypt files, or import an existing container.</p><button class="primary-button small-primary" data-view="encrypt" type="button">Create a vault <span>→</span></button></div></div>
+      </section>
+
+      <footer class="main-foot"><span>DenyFS · Local encrypted storage</span><span>Made for this device <span class="footer-dot">●</span></span></footer>
+    </main>
+  </div>
+
+  <div class="busy-overlay" id="busy-overlay" hidden aria-live="polite" aria-busy="true"><div class="busy-card glass-panel"><div class="busy-orbit"><span></span><span></span><span></span></div><p class="eyebrow" id="busy-eyebrow">SECURE OPERATION</p><h2 id="busy-title">Working on your vault…</h2><p id="busy-copy">Keep this window open while DenyFS prepares your encrypted space.</p><div class="progress-track"><span class="indeterminate"></span></div><div class="busy-note"><span class="online-dot"></span> This can take a little while. All processing is local.</div></div></div>
+  <div class="toast-region" id="toast-region" aria-live="polite" aria-atomic="true"></div>
+  <script src="/app.js" defer></script>
+</body>
+</html>

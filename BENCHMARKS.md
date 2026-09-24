@@ -1,6 +1,40 @@
 # DenyFS — Performance Benchmarks
 
-Phase 7 deliverable. All measurements taken on the system described below with the `test_bench` binary compiled at `-O2` without AddressSanitizer (ASan adds ~2× overhead and distorts timing).
+This page records the current benchmark run and preserves the earlier baseline for comparison. The current measurements use the `test_bench` binary compiled at `-O2` without AddressSanitizer on 2026-09-24.
+
+The 96 KiB read/write workload is the benchmark's workload size, not the file-size limit. DenyFS03 supports files up to 4 GiB. The 4 GiB capacity tests use sparse files and do not measure writing 4 GiB of physical data.
+
+## Current Measurements (2026-09-24)
+
+### Test Environment
+
+| Parameter | Value |
+|---|---|
+| Kernel | Linux 6.6.114.1-microsoft-standard-WSL2 x86_64 |
+| Compiler | gcc (Ubuntu 15.2.0-16ubuntu1) 15.2.0 |
+| Optimization | `-O2`, no AddressSanitizer |
+| libsodium / OpenSSL | Ubuntu 26.04 system packages |
+| Container size | 10 MiB |
+| Sector size | 4096 bytes |
+| Trials | 5 per timed benchmark; raw XTS is a single loop |
+
+### Results
+
+| Operation | Mean | Best | Worst |
+|---|---:|---:|---:|
+| Argon2id KDF, one call | 162.71 ms | 141.44 ms | 205.66 ms |
+| Volume open, two sequential KDF calls | 316.79 ms | 299.25 ms | 322.97 ms |
+| Container create, 10 MiB | 354.89 ms | 344.61 ms | 369.72 ms |
+| Sequential write, 96 KiB total | 1.91 MB/s | 2.15 MB/s | 1.52 MB/s |
+| Sequential read, 96 KiB total | 14.47 MB/s | 15.73 MB/s | 12.25 MB/s |
+
+Raw AES-256-XTS measured **2,413.92 MB/s encrypt** and **2,103.11 MB/s decrypt** over 10,000 sectors (39.1 MiB), without filesystem or disk I/O. The volume-open run measured a process `VmPeak` of 76,360 KB (~74.6 MiB); the two KDF calls are sequential, so the configured 64 MiB memory limit for each is not necessarily allocated twice at once.
+
+The write/read numbers are a small-operation benchmark: it submits one 4096-byte sector per call until 96 KiB is transferred. Treat them as a host-specific reference, not expected throughput for a sustained large-file transfer. The 4 GiB boundary tests prove sparse logical addressing and persistence only. No full 4 GiB physical fill or 8 GiB container creation was measured.
+
+## Earlier Historical Baseline
+
+The detailed sections below preserve the original Phase 8 run. They predate the current metadata-validation and write-path changes; their timings and explanations describe that earlier build, not current performance. In particular, the old write analysis mentions per-block `fflush()`, which was removed from the current path. `fflush()` in either build does not imply `fsync()` or power-loss durability.
 
 ---
 
@@ -30,7 +64,7 @@ Phase 7 deliverable. All measurements taken on the system described below with t
 | Worst | 231.61 ms |
 | VmPeak | 75,856 KB (~74.1 MB) |
 
-**Analysis:** VmPeak of ~74 MB is consistent with the configured 64 MB Argon2id memlimit plus process overhead (~10 MB baseline). The ~200ms per KDF call is the intentional cost of memory-hard key derivation — this is the memory-hardness working as designed, not a performance bug.
+**Analysis:** VmPeak of ~74 MB is consistent with the configured 64 MB Argon2id memlimit plus process overhead (~10 MB baseline). The ~200ms per KDF call reflects the configured cost of memory-hard key derivation.
 
 ---
 
@@ -64,7 +98,7 @@ Pure cryptographic throughput without filesystem or disk I/O overhead.
 - Filesystem format (superblock + bitmap + inode table XTS encrypt): < 5 ms
 - Disk I/O (write 10 MB): ~60–80 ms
 
-**Analysis:** Creation time scales linearly with container size due to the CSPRNG fill requirement. A 100 MB container would take ~4–5 seconds. The CSPRNG fill is a security requirement (all non-file bytes must be indistinguishable from random), not an optimization target.
+**Analysis:** Creation time scales with container size due to the CSPRNG fill. A 100 MB container was estimated at ~4–5 seconds on this historical system. These results do not establish that the entire container is indistinguishable from random.
 
 ---
 
@@ -81,7 +115,7 @@ Pure cryptographic throughput without filesystem or disk I/O overhead.
 | VmRSS (pre-mount) | 7,368 KB |
 | VmRSS (post-close) | 7,388 KB |
 
-**Analysis:** `vol_open` runs **two** Argon2id KDF calls unconditionally (one for the outer header salt, one for the hidden header salt) as part of the timing indistinguishability mechanism from Phase 4. This doubles the KDF cost (~200ms × 2 = ~400ms) but is non-negotiable — it prevents an observer from determining whether a hidden volume exists by timing the open operation.
+**Analysis:** `vol_open` runs **two** Argon2id KDF calls unconditionally (one for each header salt). This doubles the KDF cost (~200ms × 2 = ~400ms) and gives failed-password attempts the same cryptographic work shape. It does not guarantee fixed-time execution or prevent every timing analysis.
 
 VmPeak of ~74.6 MB indicates libsodium reuses its internal Argon2id buffer across the two sequential calls rather than allocating twice. VmRSS returns to baseline after close, confirming no key material leaks into long-lived allocations.
 
@@ -97,13 +131,13 @@ VmPeak of ~74.6 MB indicates libsodium reuses its internal Argon2id buffer acros
 | Best | 1.84 MB/s |
 | Worst | 1.75 MB/s |
 
-**Analysis:** Write throughput is dominated by the read-modify-write cycle per sector (read encrypted block → decrypt → modify → encrypt → write → flush) and `fflush()` after each block write. Each write involves:
+**Analysis:** Write throughput is dominated by the read-modify-write cycle per sector (read encrypted block → decrypt → modify → encrypt → write → flush) and `fflush()` after each block write. `fflush()` moves stdio-buffered data to the operating system; it does not call `fsync()` or guarantee persistence through sudden power loss. Each write involves:
 1. XTS decrypt of the existing block (~0.002 ms)
 2. Memcpy of new data
 3. XTS encrypt of the modified block (~0.002 ms)
 4. `fwrite` + `fflush` to disk (~2 ms per sector on WSL2)
 
-The `fflush()` per write is a durability/correctness choice — data is committed after each operation. Batch-flushing would increase throughput significantly but risks data loss on crash.
+Per-block `fflush()` adds overhead, but it does not make each operation crash-durable. DenyFS has no journal or `fsync()` protocol, so a crash during metadata updates can still leave an inconsistent volume.
 
 ---
 
@@ -131,11 +165,11 @@ OS page cache effects are visible — sequential reads benefit from readahead.
 | Operation | Value | Bottleneck |
 |---|---|---|
 | Argon2id KDF (single) | ~201 ms | Memory-hard by design |
-| Volume open (2× KDF) | ~403 ms | Timing indistinguishability |
+| Volume open (2× KDF) | ~403 ms | Two-header password check |
 | Container create (10 MB) | ~465 ms | CSPRNG fill + KDF |
 | Raw XTS encrypt | 2,008 MB/s | Not a bottleneck |
 | Raw XTS decrypt | 2,402 MB/s | Not a bottleneck |
-| Sequential write (w/ I/O) | 1.81 MB/s | fflush per sector |
+| Sequential write (w/ I/O) | 1.81 MB/s | Historical build flushed each sector; current path has not been benchmarked |
 | Sequential read (w/ I/O) | 13.09 MB/s | Disk I/O + XTS |
 | Peak memory (Argon2id) | ~74.6 MB | Configured: 64 MB + overhead |
 
