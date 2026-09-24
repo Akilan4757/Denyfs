@@ -13,7 +13,7 @@ DenyFS aims for a second property: **plausible deniability**. In a single snapsh
 - A user can reveal the **outer** password under coercion and mount the outer volume. The outer filesystem does not describe a hidden volume, but that does not prove that hidden data is absent.
 - The hidden volume's data occupies the container's unused region. Since that region starts filled with random bytes and hidden data uses AES-256-XTS, both are intended to look random-like in a single snapshot.
 
-This is the same architectural pattern as VeraCrypt's hidden volumes. DenyFS implements it from scratch to understand every primitive involved, not to replace VeraCrypt.
+This follows the same broad architectural pattern as VeraCrypt's hidden volumes. DenyFS implements its own container and filesystem code; this threat analysis describes DenyFS's implementation and makes no claim of equivalence to other storage products.
 
 ---
 
@@ -33,7 +33,7 @@ This is the same architectural pattern as VeraCrypt's hidden volumes. DenyFS imp
 | Limitation | Notes |
 |---|---|
 | The hidden password | Cannot be coerced, guessed, or brute-forced |
-| Quantum computing capabilities | This prototype's analysis assumes classical attackers; it makes no quantum-security assessment. |
+| Quantum computing capabilities | This threat model assumes classical attackers; quantum resistance has not been assessed. |
 | Persistent access over time (single-snapshot only) | See §4 for what happens when this assumption is violated |
 
 ---
@@ -163,7 +163,7 @@ These are **named, acknowledged, and architecturally non-addressable within scop
 
 **Impact:** All security properties are voided. The user trusts a compromised tool.
 
-**Why there is no code fix:** DenyFS does not implement reproducible builds, code signing, or binary attestation. This is documented in [BUILD_INTEGRITY.md](BUILD_INTEGRITY.md) as a scope limitation. A production system would need all three.
+**Current build-trust limits:** DenyFS does not implement reproducible builds, code signing, or binary attestation. This is documented in [BUILD_INTEGRITY.md](BUILD_INTEGRITY.md) as a scope limitation. Environments that require high-assurance deployment should add these controls and verify the release artifacts independently.
 
 ---
 

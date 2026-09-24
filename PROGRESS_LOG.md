@@ -310,7 +310,7 @@
   - §3: What this means for users — build-from-source trust model vs. pre-built binary trust assumptions.
   - §4: Recommended user mitigations — build from source, verify compiler/dependency packages, audit the ~1200-line codebase, air-gap sensitive builds.
   - §5: Cross-references to brain file §9 adversary #5, §4 Phase 5, §8 compressibility list item #4, and README Known Limitations.
-  - §6: Why the document exists instead of a fix — honest scope statement for a portfolio project.
+  - §6: Why the document exists instead of a fix — honest statement of current build-integrity scope.
 - `README.md` (MODIFIED):
   - Known Limitations → Build Integrity bullet expanded to reference `BUILD_INTEGRITY.md`.
   - Roadmap updated: Phase 5 marked `[x]` with description "Build Integrity Note" and link to `BUILD_INTEGRITY.md`. Former Phase 5/6 (Fuzzing, Benchmarks) renumbered to Phase 6/7 to align with brain file's actual Phase 7/8 numbering.

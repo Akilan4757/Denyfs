@@ -4,14 +4,17 @@
 and presentation of DenyFS**
 
 This handbook starts with the simplest explanation and moves into the source
-code and on-disk design. It is written for users, students, reviewers, and
-presenters who need one place to understand the complete project.
+code and on-disk design. It is written for people installing, operating,
+evaluating, or maintaining DenyFS who need one place to understand the complete
+application.
 
-> **Project status:** DenyFS is an educational prototype. It is useful for
-> learning about encrypted containers, filesystems, FUSE, and plausible
-> deniability. It has not received a formal security audit. Do not treat it as a
-> replacement for established, reviewed storage encryption software or as the
-> only copy of important data.
+> **Application and security status:** DenyFS is a usable local encrypted-storage
+> application for Linux and WSL2. Its CLI and dashboard create containers,
+> mount volumes, and encrypt or decrypt files. It has not undergone independent
+> security review; file-data blocks are not authenticated, and the filesystem
+> has no crash journal or automatic backup system. Keep separate backups and
+> choose it only when its integrity, recovery, and threat-model limits meet your
+> requirements.
 
 ## Contents
 
@@ -30,7 +33,7 @@ presenters who need one place to understand the complete project.
 13. [Security properties and limitations](#13-security-properties-and-limitations)
 14. [Tests, benchmarks, and what they establish](#14-tests-benchmarks-and-what-they-establish)
 15. [Troubleshooting](#15-troubleshooting)
-16. [Where DenyFS fits](#16-where-denyfs-fits)
+16. [Intended uses and operating boundaries](#16-intended-uses-and-operating-boundaries)
 17. [How to present or demonstrate the project](#17-how-to-present-or-demonstrate-the-project)
 18. [Source map and terms](#18-source-map-and-terms)
 
@@ -96,7 +99,8 @@ The current project provides:
 
 The filesystem does not have subdirectories, file-block authentication, a
 crash-recovery journal, or an automatic backup system. Container sizes are fixed
-when created. See [Section 13](#13-security-properties-and-limitations) and
+when created, and the project has not undergone independent security review.
+See [Section 13](#13-security-properties-and-limitations) and
 [Section 14](#14-tests-benchmarks-and-what-they-establish) for exact limits.
 
 ---
@@ -885,30 +889,33 @@ vault you intended to create.
 
 ---
 
-## 16. Where DenyFS fits
+## 16. Intended uses and operating boundaries
 
-### Good fits
+### Suitable workflows
 
-- A class or personal study project about storage encryption architecture.
-- A controlled demonstration of Argon2id, authenticated headers, block
-  encryption, FUSE, and filesystem metadata.
-- A code-review exercise about the difference between confidentiality,
-  integrity, deniability, and host-level evidence.
-- A prototype for measuring how container size, random filling, password KDF
-  work, and per-block I/O affect performance.
+- Personal files in local encrypted containers on supported Linux or WSL2
+  systems.
+- Local file workflows through the CLI, Linux FUSE mount, or browser dashboard.
+- Workflows that use an outer volume and optional hidden volume while
+  understanding the limited snapshot assumptions described in the threat model.
+- Data for which the owner can maintain separate verified backups and accepts
+  the current file-integrity and crash-recovery properties.
 
-### Poor fits
+### Requirements that need additional controls
 
-- A production system holding irreplaceable, regulated, or life-critical data.
-- A promise that a hidden volume is impossible to detect.
-- Workflows that require reliable crash recovery, audited tamper detection for
-  every file block, concurrent multi-user access, subdirectories, or resizing.
+- Data that requires authenticated integrity for every file block or journaled
+  recovery after power loss.
+- Workflows requiring concurrent multi-user access, nested directories,
+  multiple hidden volumes, or resizing.
+- Data without a separate, tested backup and recovery path.
 - A device that may already be compromised or monitored.
-- An only copy of a backup or any workflow without a recovery plan.
+- Environments that require independently audited software, signed releases,
+  or verified build provenance before deployment.
 
-The project's value is that the code and design tradeoffs can be studied and
-demonstrated. For operational security, use established tools that match the
-actual threat model and have independent review.
+DenyFS is an operating local storage application, and its suitability depends
+on the data, recovery requirements, and threat model. Review
+[THREAT_MODEL.md](THREAT_MODEL.md) and [BUILD_INTEGRITY.md](BUILD_INTEGRITY.md)
+before deployment; use a separate verified backup for important data.
 
 ---
 
@@ -929,8 +936,8 @@ actual threat model and have independent review.
    encrypt one harmless file and decrypt it to a download.
 6. **Evidence:** show the tests and benchmarks, including what the 4 GiB sparse
    boundary test verifies.
-7. **Limits:** explain unauthenticated file blocks, lack of a crash journal,
-   host evidence, and why the project is not a formal security product.
+7. **Operating boundaries:** explain unauthenticated file blocks, lack of a
+   crash journal, host evidence, and the limits of the current threat model.
 
 ### Safe live-demo outline
 

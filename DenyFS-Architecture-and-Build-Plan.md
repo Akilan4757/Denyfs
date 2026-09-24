@@ -23,9 +23,9 @@ That last phrasing is deliberately more careful than "there is no way to prove i
 - **Whistleblowers and sources** working with journalists, needing storage that survives a forced-unlock scenario without an obvious "something's missing" signal.
 - **General privacy-conscious backup**, independent of any coercion scenario.
 
-**Why this is a good portfolio project, separately from the use case above:** it forces real understanding of applied cryptography — key derivation, authenticated vs. unauthenticated encryption, side-channel elimination, memory hygiene, and honest threat-modeling — instead of calling a library function once. The interesting problem isn't "encrypt a file," it's "make the *absence of evidence* itself a property you can defend under questioning."
+**Product and engineering rationale:** DenyFS combines applied cryptography, container management, a filesystem implementation, FUSE integration, and an explicit threat model. Its design goal is to make the *absence of evidence* itself a property that can be evaluated under stated assumptions.
 
-**What this is not:** a claim of "unbreakable," a replacement for operational security, or a tool that protects you if the device itself is compromised (keylogger, malware, seized while mounted). §9 lists this explicitly.
+**Security boundary:** DenyFS does not claim to be unbreakable or replace operational security. It cannot protect data if the device is compromised by a keylogger or malware, or seized while a volume is mounted. §9 lists this explicitly.
 
 ---
 
@@ -143,7 +143,7 @@ Two things happen in this phase, not one — FUSE glue, and the actual filesyste
 **3a. On-disk metadata format (this is DenyFS's own, not ext4/FAT via loopback — see Phase 2):**
 - Superblock: volume size, block size (4096B), inode count, pointer to bitmap.
 - Block allocation bitmap: one bit per block, integrity-protected with the HMAC key from Phase 1 (separate from the GCM header tag — see rationale above). Checked on mount; a failed check refuses mount with a generic error, not a crash.
-- Flat inode table: fixed max file count decided at creation (portfolio-scope limitation, stated explicitly rather than silently — a production filesystem would need dynamic inode allocation, DenyFS does not).
+- Flat inode table: fixed maximum file count of 63 files per volume. Dynamic inode allocation is not implemented.
 - File block mapping: 20 direct data pointers plus single- and double-indirect 4096-byte pointer tables; 64-bit file lengths allow a maximum 4 GiB file. Keep the 64-inode limit (63 files) explicit.
 - Format version: the expanded inode layout uses superblock magic `DenyFS03`. DenyFS02 containers are not automatically migrated; users must export data using the old build and recreate containers.
 - Directory entries: name → inode mapping, flat directories only (no need to build a general tree-balancing structure for this scope — stated as a scope limitation, not hidden).

@@ -1,6 +1,6 @@
 # DenyFS: Project Guide from First Idea to Internals
 
-This guide explains what DenyFS does, how a user operates it, and how its code works. It starts with the everyday idea and gradually adds the implementation details. DenyFS is an educational prototype; do not use it as a replacement for a reviewed storage product.
+This guide explains what DenyFS does, how a user operates it, and how its code works. It starts with the everyday idea and gradually adds the implementation details. DenyFS is a local encrypted-storage application for Linux and WSL2, with CLI and dashboard workflows. Review the security, integrity, and recovery limits in this guide and the threat model when deciding whether it fits your data.
 
 ## 1. The basic idea
 
@@ -124,7 +124,7 @@ This guard prevents normal DenyFS filesystem writes from overwriting the protect
 
 ## 9. Security and practical limits
 
-DenyFS is a learning project, not a security-reviewed product. Its deniability property is an intended design goal under a limited single-snapshot threat model, not a guarantee. Repeated container snapshots can reveal changed regions. Malware or a keylogger can capture passwords. Host logs, indexers, previews, backups, swap policy, and filesystem timestamps are outside the container format and need operational care.
+DenyFS is a usable local storage application, but its deniability property is an intended design goal under a limited single-snapshot threat model, not a guarantee. It has not undergone independent security review; file blocks are not authenticated, and there is no crash journal. Repeated container snapshots can reveal changed regions. Malware or a keylogger can capture passwords. Host logs, indexers, previews, backups, swap policy, and filesystem timestamps are outside the container format and need operational care.
 
 The application attempts to lock secret buffers and wipes key buffers when they are released, and the CLI disables core dumps where the operating system permits it. This does not protect secrets from root, memory-forensics, cold-boot, DMA, or a compromised kernel. FUSE has not been exercised on every supported Linux setup, and extended AFL++ campaigns are separate from having fuzz harness source code.
 

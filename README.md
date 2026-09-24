@@ -16,12 +16,12 @@
     <img src="https://img.shields.io/badge/platform-Linux%20%7C%20WSL2-64748B?style=flat-square" alt="Linux and WSL2">
     <img src="https://img.shields.io/badge/license-MIT-21A886?style=flat-square" alt="MIT license">
   </p>
-  <p><sub>LOCAL FIRST &nbsp;·&nbsp; OPEN SOURCE RESEARCH PROTOTYPE</sub></p>
+  <p><sub>LOCAL FIRST &nbsp;·&nbsp; ENCRYPTED STORAGE FOR LINUX</sub></p>
 </div>
 
 ---
 
-> **A note on scope** &nbsp; DenyFS is an educational prototype for exploring encrypted containers, filesystems, FUSE, and plausible deniability. It has not had a formal security audit. Its deniability goal is limited and does not guarantee safety against repeated snapshots, host evidence, or a compromised device.
+> **Security and operating scope** &nbsp; DenyFS is a local encrypted-storage application for Linux and WSL2, with command-line and browser-dashboard workflows. It has not undergone independent security review. File blocks are not authenticated, and the filesystem has no crash journal. Its hidden-volume design addresses a limited single-snapshot scenario; it does not hide host evidence or protect a compromised device. Review these limits and keep separate backups before choosing DenyFS for your data.
 
 <div align="center">
   <a href="#how-it-works">How it works</a> &nbsp;·&nbsp;
@@ -46,7 +46,7 @@ volume stored in unused container space.
   </tr>
 </table>
 
-### Built for learning, with familiar tools
+### Designed for local file workflows
 
 | Capability | Implementation |
 |---|---|
@@ -270,6 +270,6 @@ large-file transfers. Full methodology and historical results are in
 MIT. See [LICENSE](LICENSE).
 
 <div align="center">
-  <sub>Built for learning how encrypted filesystems work — and where their limits begin.</sub><br>
+  <sub>Local encrypted storage, through a mounted filesystem or dashboard.</sub><br>
   <a href="#top">Back to top ↑</a>
 </div>

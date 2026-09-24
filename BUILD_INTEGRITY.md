@@ -120,7 +120,7 @@ These are operational steps outside DenyFS's scope, listed for completeness:
 
 ## 6. Why This Document Exists Instead of a Fix
 
-Implementing reproducible builds, code signing, and supply-chain verification is real engineering work that requires ongoing maintenance (key management, CI infrastructure, dependency tracking). For a portfolio project whose purpose is demonstrating applied cryptography and deniable storage design, the honest approach is to **name the gap explicitly** rather than either:
+Implementing reproducible builds, code signing, and supply-chain verification is real engineering work that requires ongoing maintenance (key management, CI infrastructure, dependency tracking). For this local encrypted-storage application, the honest approach is to **name the gap explicitly** rather than either:
 - Silently omitting it and hoping no one asks.
 - Bolting on a token gesture (e.g., a single GPG signature with no verification story) that creates a false sense of coverage.
 
