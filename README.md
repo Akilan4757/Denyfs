@@ -1,141 +1,275 @@
-# DenyFS
+<div align="center">
+  <a name="top"></a>
+  <img src="assets/denyfs-overview.gif" alt="Animated DenyFS overview showing the local vault dashboard, encryption and unlock workflows, and project limits" width="100%">
+  <br><br>
+  <h1>DenyFS</h1>
+  <p><strong>Private storage. Made simple.</strong></p>
+  <p>An encrypted-container filesystem with an outer volume and one optional hidden volume.</p>
+  <p>
+    <a href="#quick-start"><img src="https://img.shields.io/badge/Quick_start-Get_started-3478F6?style=for-the-badge&amp;labelColor=17243A" alt="Quick start"></a>
+    <a href="documentation.md"><img src="https://img.shields.io/badge/Explore-Project_guide-21A886?style=for-the-badge&amp;labelColor=17243A" alt="Project guide"></a>
+    <a href="#dashboard"><img src="https://img.shields.io/badge/Open-Local_dashboard-7E6BE8?style=for-the-badge&amp;labelColor=17243A" alt="Local dashboard"></a>
+  </p>
+  <p>
+    <a href="https://github.com/Akilan4757/Denyfs/actions/workflows/ci.yml"><img src="https://github.com/Akilan4757/Denyfs/actions/workflows/ci.yml/badge.svg" alt="CI status"></a>
+    <img src="https://img.shields.io/badge/C-C11-3478F6?style=flat-square" alt="C11">
+    <img src="https://img.shields.io/badge/platform-Linux%20%7C%20WSL2-64748B?style=flat-square" alt="Linux and WSL2">
+    <img src="https://img.shields.io/badge/license-MIT-21A886?style=flat-square" alt="MIT license">
+  </p>
+  <p><sub>LOCAL FIRST &nbsp;·&nbsp; OPEN SOURCE RESEARCH PROTOTYPE</sub></p>
+</div>
 
-DenyFS is an educational encrypted-container filesystem written in C. A single
-container file holds an outer filesystem and can hold one optional hidden
-filesystem. Linux FUSE makes an unlocked volume appear as a normal directory.
-A local browser dashboard is included for encrypting selected files and
-decrypting them back to downloads.
+---
 
-> **Project status:** prototype for learning, demonstrations, and controlled
-> experiments. DenyFS has not had a formal security audit and is not a reviewed
-> replacement for VeraCrypt, LUKS, FileVault, or a production backup system.
-> Its hidden-volume design is a limited single-snapshot goal, not a guarantee
-> against repeated snapshots, host evidence, or a compromised device.
+> **A note on scope** &nbsp; DenyFS is an educational prototype for exploring encrypted containers, filesystems, FUSE, and plausible deniability. It has not had a formal security audit. Its deniability goal is limited and does not guarantee safety against repeated snapshots, host evidence, or a compromised device.
 
-## Capabilities
+<div align="center">
+  <a href="#how-it-works">How it works</a> &nbsp;·&nbsp;
+  <a href="#quick-start">Quick start</a> &nbsp;·&nbsp;
+  <a href="#dashboard">Dashboard</a> &nbsp;·&nbsp;
+  <a href="#capacity">Capacity</a> &nbsp;·&nbsp;
+  <a href="#security-model">Security model</a> &nbsp;·&nbsp;
+  <a href="#documentation">Documentation</a>
+</div>
 
-- Create an encrypted container and format its outer volume.
-- Create one hidden volume in unused container space.
-- Open or mount the volume selected by a passphrase.
-- Mount the outer volume with an optional guard that refuses writes into the
-  hidden-volume range.
-- Use the command line or a loopback-only dashboard to manage files.
-- Encrypt 4096-byte filesystem blocks with AES-256-XTS; protect volume headers
-  with AES-256-GCM; derive password keys with Argon2id.
-- Store files up to 4 GiB each, with at most 63 files in each flat root
-  directory. Available total capacity depends on the volume size.
+## A small filesystem. Inside one file.
 
-See [documentation.md](documentation.md) for the full handbook, including the
-design, architecture, setup, commands, dashboard, limits, security model,
-troubleshooting, and presentation guide.
+DenyFS turns a regular container file into an encrypted filesystem. Mount it on
+Linux and use it like a directory. A second passphrase can open one hidden
+volume stored in unused container space.
 
-## Quick start: Linux or WSL2
+<table>
+  <tr>
+    <td align="center" width="33%"><strong>01 &nbsp; ENCRYPT</strong><br><br>Choose a passphrase and create a local container.</td>
+    <td align="center" width="33%"><strong>02 &nbsp; STORE</strong><br><br>Read and write files through a FUSE mount.</td>
+    <td align="center" width="33%"><strong>03 &nbsp; UNLOCK</strong><br><br>Open the outer or optional hidden volume.</td>
+  </tr>
+</table>
 
-Install the required packages on Ubuntu or Debian:
+### Built for learning, with familiar tools
+
+| Capability | Implementation |
+|---|---|
+| Password-based key derivation | Argon2id via libsodium |
+| Authenticated volume headers | AES-256-GCM via OpenSSL |
+| Filesystem block encryption | AES-256-XTS, 4096-byte blocks |
+| Bitmap integrity | HMAC-SHA256 |
+| Filesystem interface | Single-threaded Linux FUSE |
+| Local file dashboard | Python standard library + HTML/CSS/JavaScript |
+
+<details>
+  <summary><strong>What can I store?</strong> &nbsp; 4 GiB maximum per file · 63 files per volume</summary>
+
+DenyFS has a flat root directory, no subfolders, and a fixed container size.
+Total usable space depends on the outer or hidden volume size and its
+filesystem metadata. Sparse files can have a 4 GiB logical size while using
+less physical space.
+
+</details>
+
+## Quick start
+
+### 1. Install dependencies
+
+On Ubuntu or Debian:
 
 ```bash
 sudo apt update
 sudo apt install build-essential pkg-config libsodium-dev libssl-dev libfuse3-dev fuse3
 ```
 
-Build the project from its root directory:
+### 2. Build and create a small container
+
+Run from the directory containing the `Makefile`:
 
 ```bash
-make all
+make release
+mkdir -p ~/denyfs-vaults /tmp/denyfs-vault
+./denyfs-release create ~/denyfs-vaults/demo.denyfs --size 64
 ```
 
-Create and mount a small container:
+The CLI asks for a passphrase without echoing it. Container creation fills the
+entire file with random bytes, so the 64 MiB example needs at least 64 MiB free.
+
+### 3. Mount, use, and unmount
 
 ```bash
-./denyfs create vault.img --size 50
-mkdir -p /tmp/denyfs-vault
-./denyfs mount vault.img --mountpoint /tmp/denyfs-vault
+./denyfs-release mount ~/denyfs-vaults/demo.denyfs --mountpoint /tmp/denyfs-vault
 ```
 
-The CLI prompts for the password without echo. Use the mounted directory while
-the command is running. In another terminal, unmount it when finished:
+Use `/tmp/denyfs-vault` from another terminal while the mount command runs.
+When finished:
 
 ```bash
 fusermount3 -u /tmp/denyfs-vault
 ```
 
-The `--size` value is in MiB and specifies the complete container file. New
-containers are filled with random bytes, so allow enough free disk space for the
-full container.
+<details>
+  <summary><strong>Create a hidden volume</strong> &nbsp; Use a different passphrase</summary>
 
-## Start the dashboard
+```bash
+./denyfs-release create-hidden ~/denyfs-vaults/demo.denyfs --size 8
+```
 
-The dashboard needs Linux with FUSE. On Windows, run it from WSL2 with `/dev/fuse`
-and `fusermount3` available. Start it from the project root:
+The command asks for the outer passphrase, then the hidden-volume
+passphrase. The hidden volume is created in available unused space. The
+format has one hidden-volume slot; do not run this command again over data
+you want to keep.
+
+</details>
+
+## A dashboard for local files
+
+The browser dashboard uses the same DenyFS release binary and FUSE filesystem.
+It creates real DenyFS containers; it does not use a separate browser-only
+encryption format.
+
+<a name="dashboard"></a>
 
 ```bash
 make dashboard
 ```
 
-Open <http://127.0.0.1:8765>. The dashboard creates real DenyFS containers,
-imports and exports encrypted containers, unlocks outer or hidden volumes, and
-downloads selected decrypted files. See [dashboard/README.md](dashboard/README.md)
-for workflow and storage details.
+Open <http://127.0.0.1:8765>. Select files to encrypt, unlock a container, and
+download selected files as plaintext. The dashboard binds to loopback and
+stores encrypted containers in `~/.local/share/denyfs-dashboard/vaults/` by
+default. Decrypted downloads go to the browser's normal download location.
 
-To fit one fully allocated 4 GiB file, use at least a 4101 MiB volume. The
-current layout places the outer volume in roughly half the container; a hidden
-volume of that size therefore needs an 8203 MiB container. Creating it random-
-fills more than 8 GiB and can take several minutes. Leave extra room if storing
-more data or filesystem metadata.
+<details>
+  <summary><strong>Dashboard workflow and data locations</strong></summary>
 
-## CLI commands
+- Run the dashboard inside Linux or WSL2 with `/dev/fuse` and `fusermount3`.
+- Keep vault files in the Linux filesystem when using WSL2; use `/tmp` for
+  mount points.
+- Import copies an encrypted container into the local library. Export saves
+  an encrypted container to a location chosen by the browser.
+- Lock the vault when finished. The dashboard does not erase plaintext
+  downloads after saving them.
+
+See the [dashboard guide](dashboard/README.md) for setup and detailed steps.
+
+</details>
+
+## Capacity
+
+One file can be up to **4 GiB**. A fully allocated 4 GiB file needs at least a
+**4101 MiB volume**. To provide that as a hidden volume, use an **8203 MiB
+container**. DenyFS random-fills the full container on creation, so this example
+requires more than 8 GiB of free space and may take several minutes.
+
+<details>
+  <summary><strong>What the 4 GiB test means</strong></summary>
+
+The stress and FUSE checks exercise sparse-file mapping, persistence, and
+reads/writes near the final byte of a 4 GiB logical file. They do not write
+four billion bytes of physical file data or benchmark an 8 GiB container
+creation. See [the benchmark notes](BENCHMARKS.md) for measured throughput.
+
+</details>
+
+## How it works
+
+<a name="how-it-works"></a>
 
 ```text
-./denyfs create <path> --size <MiB>
-./denyfs create-hidden <path> --size <MiB>
-./denyfs open <path>
-./denyfs mount <path> --mountpoint <directory>
-./denyfs mount <path> --mountpoint <directory> --protect-hidden
+Passphrase
+    │
+    ▼
+Argon2id ──► header key ──► AES-256-GCM header authentication
+                                  │
+                    ┌─────────────┴─────────────┐
+                    ▼                           ▼
+              random XTS key              bitmap HMAC key
+                    │                           │
+                    ▼                           ▼
+       AES-256-XTS filesystem blocks      allocation bitmap check
+                    │
+                    ▼
+          DenyFS filesystem ──► FUSE ──► mounted directory
 ```
 
-Passwords are requested interactively. For scripts, the CLI accepts
-`--password-fd <fd>` and `--hidden-password-fd <fd>` so passwords do not appear
-in process arguments. See the handbook for safe examples and the complete
-command reference.
+The container starts with an encrypted outer header and outer filesystem.
+Unused space is random-filled; the optional hidden filesystem and its encrypted
+header occupy a separate region. Each volume has its own keys and filesystem
+metadata.
 
-## Build and verification
+## Security model
 
-```bash
-make all          # CLI, release CLI, tests, fuzz harnesses, benchmark harness
-make test         # crypto, sector I/O, filesystem, timing, and stress tests
-make test-fuse    # Linux FUSE mount and file-operation smoke test
-./test_bench      # optional performance baseline
-```
+**The header is authenticated. File blocks are not.** AES-GCM detects an
+incorrect key or changed header. AES-XTS encrypts filesystem blocks but does
+not authenticate their contents. The allocation bitmap has an HMAC; that does
+not cover every file block or all filesystem metadata.
 
-The full test suite and FUSE smoke test were run on **2026-09-24** in Ubuntu on
-WSL2. All five `make test` programs and the FUSE smoke test passed, including
-the 4 GiB sparse-file boundary check. This verifies the tested environment and
-operations; it is not a security audit or a full 4 GiB physical-throughput test.
-Detailed results and benchmark scope are in [BENCHMARKS.md](BENCHMARKS.md).
+The hidden-volume design aims to make a single container snapshot ambiguous.
+Repeated snapshots, host logs, desktop indexers, previews, backups, and a
+compromised device can expose activity. DenyFS has no crash journal, secure
+delete, automatic backup, resize operation, or formal security review.
 
-## Project documents
+<details>
+  <summary><strong>Read the threat model</strong></summary>
 
-- [Full project handbook](documentation.md)
-- [Dashboard guide](dashboard/README.md)
-- [Plain-language project guide](PROJECT_GUIDE.md)
-- [Architecture and build plan](DenyFS-Architecture-and-Build-Plan.md)
 - [Threat model](THREAT_MODEL.md)
 - [Build integrity statement](BUILD_INTEGRITY.md)
-- [Benchmarks](BENCHMARKS.md)
-- [Progress log](PROGRESS_LOG.md)
+- [Architecture and build plan](DenyFS-Architecture-and-Build-Plan.md)
 
-## Source map
+</details>
 
-| Path | Role |
+## Verification and performance
+
+```bash
+make test         # crypto, sector I/O, filesystem, timing, and stress checks
+make test-fuse    # FUSE integration smoke test (Linux with /dev/fuse)
+./test_bench      # optional benchmark run
+```
+
+The latest documented run passed all five `make test` programs and the FUSE
+smoke test on Ubuntu under WSL2. Its 4 GiB coverage is sparse-boundary
+verification. The performance baseline is host-specific:
+
+| Operation | Recorded result |
+|---|---:|
+| Argon2id, one call | 162.71 ms mean |
+| Open volume | 316.79 ms mean |
+| Raw AES-256-XTS encryption | 2,413.92 MB/s |
+| Raw AES-256-XTS decryption | 2,103.11 MB/s |
+| Small sequential write / read | 1.91 / 14.47 MB/s |
+
+The read/write numbers measure 96 KiB with one sector per call, not sustained
+large-file transfers. Full methodology and historical results are in
+[BENCHMARKS.md](BENCHMARKS.md).
+
+## Documentation
+
+<table>
+  <tr>
+    <td><strong><a href="documentation.md">Project handbook</a></strong><br>Setup, architecture, crypto, workflows, troubleshooting, and presentation.</td>
+    <td><strong><a href="PROJECT_GUIDE.md">Project guide</a></strong><br>Plain-language walk through the implementation.</td>
+    <td><strong><a href="dashboard/README.md">Dashboard guide</a></strong><br>Local UI, storage, and encrypt/decrypt steps.</td>
+  </tr>
+  <tr>
+    <td><a href="DenyFS-Architecture-and-Build-Plan.md">Architecture plan</a></td>
+    <td><a href="THREAT_MODEL.md">Threat model</a></td>
+    <td><a href="BENCHMARKS.md">Benchmarks</a></td>
+  </tr>
+</table>
+
+## Project layout
+
+| Path | Responsibility |
 |---|---|
-| `src/crypto.c`, `src/crypto.h` | Password KDF, key derivation, header encryption, sector encryption, HMAC |
-| `src/fs.c`, `src/fs.h` | Container format, volume selection, encrypted filesystem operations |
-| `src/fuse_ops.c`, `src/fuse_ops.h` | Linux FUSE filesystem adapter |
-| `src/main.c` | CLI and password input |
-| `dashboard/` | Local web dashboard and its Python API |
-| `tests/` | Correctness, timing, stress, FUSE, fuzz harnesses, benchmark source |
-| `Makefile` | Build and run targets |
+| `src/crypto.c` | Argon2id, key derivation, AES-GCM, AES-XTS, HMAC |
+| `src/fs.c` | Container format, block mapping, metadata, file operations |
+| `src/fuse_ops.c` | Linux FUSE adapter |
+| `src/main.c` | CLI and secure password input |
+| `dashboard/` | Local web UI and loopback API |
+| `tests/` | Correctness, stress, FUSE, fuzz harnesses, benchmarks |
+| `Makefile` | Build, dashboard, and verification targets |
 
 ## License
 
 MIT. See [LICENSE](LICENSE).
+
+<div align="center">
+  <sub>Built for learning how encrypted filesystems work — and where their limits begin.</sub><br>
+  <a href="#top">Back to top ↑</a>
+</div>
