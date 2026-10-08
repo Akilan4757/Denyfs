@@ -342,6 +342,65 @@ h1, h2, h3, p { margin-top: 0; }
 .toast span:last-child { padding-top: 2px; font-size: 10px; line-height: 1.45; }
 .visually-hidden { position: absolute !important; width: 1px !important; height: 1px !important; padding: 0 !important; overflow: hidden !important; clip: rect(0,0,0,0) !important; white-space: nowrap !important; border: 0 !important; }
 
+/* Double Volume & Plausible Deniability components */
+.vault-type-switch-wrap { margin-bottom: 20px; }
+.vault-type-label { display: block; margin-bottom: 8px; color: #8fa0b5; font-size: 8.5px; font-weight: 750; letter-spacing: 1.1px; }
+.vault-type-switch { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 5px; border: 1px solid rgba(100, 130, 175, .15); border-radius: 16px; background: rgba(238, 244, 252, .65); }
+.vault-type-btn { display: flex; align-items: flex-start; gap: 11px; padding: 11px 13px; border: 1px solid transparent; border-radius: 12px; background: transparent; cursor: pointer; text-align: left; transition: all .2s ease; }
+.vault-type-btn:hover { background: rgba(255, 255, 255, .6); }
+.vault-type-btn.is-active { border-color: rgba(69, 124, 225, .16); background: #fff; box-shadow: 0 4px 14px rgba(45, 68, 105, .08); }
+.vt-radio { display: grid; width: 15px; height: 15px; flex: 0 0 auto; place-items: center; margin-top: 2px; border: 1.5px solid #a3b2c5; border-radius: 50%; transition: all .2s ease; }
+.vault-type-btn.is-active .vt-radio { border-color: var(--blue); background: var(--blue); box-shadow: inset 0 0 0 3px #fff; }
+.vt-content { display: grid; gap: 3px; min-width: 0; }
+.vt-content strong { color: #2a384e; font-size: 11px; font-weight: 650; }
+.vt-content small { color: #8795a7; font-size: 8.5px; line-height: 1.4; }
+
+.deniable-files-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 13px; margin-bottom: 8px; }
+.deniable-vol-box { padding: 15px; border: 1px solid rgba(101, 136, 189, .15); border-radius: 16px; background: rgba(248, 251, 255, .55); }
+.deniable-vol-box.outer-box { border-color: rgba(76, 131, 221, .2); }
+.deniable-vol-box.hidden-box { border-color: rgba(126, 107, 232, .24); background: rgba(251, 249, 255, .6); }
+.deniable-vol-header { margin-bottom: 11px; }
+.vol-box-badge { display: inline-block; margin-bottom: 7px; padding: 2px 7px; border-radius: 6px; font-size: 8px; font-weight: 750; letter-spacing: .8px; }
+.vol-box-badge.outer { border: 1px solid rgba(69, 124, 225, .2); color: #2869dc; background: #eaf2ff; }
+.vol-box-badge.hidden-vol { border: 1px solid rgba(121, 103, 221, .25); color: #7258d4; background: #f2efff; }
+.deniable-vol-header h3 { margin: 0 0 3px; color: #2f3e55; font-size: 12px; font-weight: 650; }
+.deniable-vol-header p { margin: 0; color: #8896a8; font-size: 8.5px; line-height: 1.45; }
+.dropzone-sm { min-height: 115px; padding: 14px; }
+.dropzone-sm .drop-icon { width: 32px; height: 32px; margin-bottom: 5px; }
+.dropzone-sm .drop-icon svg { width: 17px; height: 17px; }
+.dropzone-sm > strong { font-size: 10px; }
+.dropzone-sm > span:not(.drop-icon) { font-size: 9px; }
+
+.form-grid-pass { margin-top: 13px; }
+.deniable-password-section { display: grid; gap: 12px; margin-top: 14px; }
+.deniable-pass-group { padding: 13px 14px; border: 1px solid rgba(101, 136, 189, .13); border-radius: 14px; background: rgba(250, 252, 255, .6); }
+.deniable-pass-tag { display: inline-block; margin-bottom: 10px; padding: 2px 7px; border-radius: 6px; font-size: 8px; font-weight: 750; letter-spacing: .8px; }
+.deniable-pass-tag.outer-tag { border: 1px solid rgba(69, 124, 225, .2); color: #2869dc; background: #eaf2ff; }
+.deniable-pass-tag.hidden-tag { border: 1px solid rgba(121, 103, 221, .25); color: #7258d4; background: #f2efff; }
+
+.protect-hidden-row { margin-top: 14px; padding: 12px 14px; border: 1px solid rgba(48, 169, 132, .18); border-radius: 13px; background: rgba(240, 249, 245, .65); }
+.checkbox-label { display: flex; position: relative; align-items: flex-start; gap: 10px; cursor: pointer; user-select: none; }
+.checkbox-label input[type="checkbox"] { position: absolute; opacity: 0; width: 0; height: 0; }
+.checkbox-custom { display: grid; width: 17px; height: 17px; flex: 0 0 auto; place-items: center; margin-top: 1px; border: 1.5px solid #82b9a7; border-radius: 6px; background: #fff; transition: all .18s ease; }
+.checkbox-custom svg { width: 12px; height: 12px; opacity: 0; color: #fff; stroke-width: 2.2; transform: scale(.6); transition: all .18s ease; }
+.checkbox-label input:checked ~ .checkbox-custom { border-color: #21a886; background: #21a886; }
+.checkbox-label input:checked ~ .checkbox-custom svg { opacity: 1; transform: scale(1); }
+.checkbox-text { display: grid; gap: 2px; }
+.checkbox-text strong { color: #2c4d41; font-size: 10px; font-weight: 650; }
+.checkbox-text small { color: #6a887b; font-size: 8.5px; line-height: 1.45; }
+.protect-hidden-pass-wrap { margin-top: 12px; animation: page-in .25s ease both; }
+
+.opened-badges-row { display: flex; align-items: center; gap: 7px; margin-bottom: 6px; }
+.vol-badge { display: inline-flex; align-items: center; padding: 2px 7px; border-radius: 6px; font-size: 8.5px; font-weight: 750; letter-spacing: .6px; text-transform: uppercase; }
+.vol-badge.vol-outer { border: 1px solid rgba(69, 124, 225, .22); color: #2869dc; background: #eaf2ff; }
+.vol-badge.vol-hidden { border: 1px solid rgba(121, 103, 221, .28); color: #7258d4; background: #f2efff; }
+.vol-badge.vol-protected { border: 1px solid rgba(33, 168, 134, .28); color: #1c9b78; background: #e8f8f2; }
+.volume-notice-bar { display: flex; align-items: center; gap: 8px; margin: 10px 0 12px; padding: 8px 12px; border: 1px solid rgba(100, 134, 185, .15); border-radius: 10px; color: #516580; background: rgba(240, 245, 254, .7); font-size: 9px; line-height: 1.45; }
+.notice-indicator { width: 6px; height: 6px; flex: 0 0 auto; border-radius: 50%; background: #4b85e4; }
+.volume-notice-bar.is-hidden .notice-indicator { background: #856ee6; }
+.volume-notice-bar.is-protected .notice-indicator { background: #28b88d; }
+
+
 @keyframes page-in { from { opacity: 0; transform: translateY(7px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes overlay-in { from { opacity: 0; } to { opacity: 1; } }
 @keyframes toast-in { from { opacity: 0; transform: translateY(-7px) scale(.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
@@ -383,6 +442,8 @@ h1, h2, h3, p { margin-top: 0; }
   .stat-card strong { font-size: 17px; }
   .workflow-layout, .decrypt-layout { grid-template-columns: 1fr; }
   .workflow-aside { grid-template-columns: 1fr 1fr; }
+  .vault-type-switch { grid-template-columns: 1fr; }
+  .deniable-files-grid { grid-template-columns: 1fr; }
 }
 @media (max-width: 570px) {
   .shell { padding: 8px; }

@@ -42,6 +42,16 @@ class MountSession:
     process: subprocess.Popen
     expected_files: dict[str, int] = field(default_factory=dict)
     uploaded_files: set[str] = field(default_factory=set)
+    vault_type: str = "standard"  # "standard" | "deniable"
+    current_phase: str = "single"  # "single" | "outer" | "hidden"
+    expected_outer: dict[str, int] = field(default_factory=dict)
+    expected_hidden: dict[str, int] = field(default_factory=dict)
+    uploaded_outer: set[str] = field(default_factory=set)
+    uploaded_hidden: set[str] = field(default_factory=set)
+    hidden_password: str | None = None
+    vault_path: Path | None = None
+    volume_type: str = "OUTER"  # "OUTER" | "HIDDEN"
+    protect_active: bool = False
 
 
 def safe_vault_stem(value: object) -> str:
@@ -93,8 +103,10 @@ def validate_password(password: object) -> str:
     return password
 
 
-def run_with_password(binary: Path, args: list[str], password: str,
-                      timeout: int | None = None) -> subprocess.CompletedProcess | subprocess.Popen:
+def run_with_passwords(binary: Path, args: list[str], password: str,
+                       hidden_password: str | None = None,
+                       protect_hidden: bool = False,
+                       timeout: int | None = None) -> subprocess.CompletedProcess | subprocess.Popen:
     try:
         secret = bytearray(password.encode("utf-8"))
     except (AttributeError, UnicodeEncodeError):
@@ -103,6 +115,21 @@ def run_with_password(binary: Path, args: list[str], password: str,
         for index in range(len(secret)):
             secret[index] = 0
         raise ValueError("Passphrases must be 1–511 UTF-8 bytes and cannot contain a line break.")
+
+    hidden_secret: bytearray | None = None
+    if hidden_password is not None:
+        try:
+            hidden_secret = bytearray(hidden_password.encode("utf-8"))
+        except (AttributeError, UnicodeEncodeError):
+            for index in range(len(secret)):
+                secret[index] = 0
+            raise ValueError("Enter a valid hidden passphrase.")
+        if not hidden_secret or len(hidden_secret) > 511 or any(ch in hidden_secret for ch in (0, 10, 13)):
+            for index in range(len(secret)):
+                secret[index] = 0
+            for index in range(len(hidden_secret)):
+                hidden_secret[index] = 0
+            raise ValueError("Hidden passphrase must be 1–511 UTF-8 bytes and cannot contain a line break.")
 
     read_fd, write_fd = os.pipe()
     try:
@@ -116,30 +143,62 @@ def run_with_password(binary: Path, args: list[str], password: str,
         for index in range(len(secret)):
             secret[index] = 0
 
+    h_read_fd: int | None = None
+    if hidden_secret is not None:
+        h_read_fd, h_write_fd = os.pipe()
+        try:
+            write_all(h_write_fd, hidden_secret)
+            write_all(h_write_fd, b"\n")
+        except Exception:
+            os.close(read_fd)
+            if h_read_fd is not None:
+                os.close(h_read_fd)
+            raise
+        finally:
+            os.close(h_write_fd)
+            for index in range(len(hidden_secret)):
+                hidden_secret[index] = 0
+
+    cmd_args = [str(binary), *args, "--password-fd", str(read_fd)]
+    pass_fds = [read_fd]
+    if protect_hidden:
+        cmd_args.append("--protect-hidden")
+    if h_read_fd is not None:
+        cmd_args.extend(["--hidden-password-fd", str(h_read_fd)])
+        pass_fds.append(h_read_fd)
+
     try:
         if args[0] == "mount":
             return subprocess.Popen(
-                [str(binary), *args, "--password-fd", str(read_fd)],
+                cmd_args,
                 cwd=PROJECT_DIR,
                 stdin=subprocess.DEVNULL,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
-                pass_fds=(read_fd,),
+                pass_fds=tuple(pass_fds),
                 start_new_session=True,
                 close_fds=True,
             )
         return subprocess.run(
-            [str(binary), *args, "--password-fd", str(read_fd)],
+            cmd_args,
             cwd=PROJECT_DIR,
             stdin=subprocess.DEVNULL,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            pass_fds=(read_fd,),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            pass_fds=tuple(pass_fds),
             timeout=timeout,
             check=False,
+            text=True,
         )
     finally:
         os.close(read_fd)
+        if h_read_fd is not None:
+            os.close(h_read_fd)
+
+
+def run_with_password(binary: Path, args: list[str], password: str,
+                      timeout: int | None = None) -> subprocess.CompletedProcess | subprocess.Popen:
+    return run_with_passwords(binary, args, password, timeout=timeout)
 
 
 def is_mount(path: Path) -> bool:
@@ -147,7 +206,9 @@ def is_mount(path: Path) -> bool:
 
 
 def start_mount(binary: Path, mount_root: Path, vault_path: Path, vault_name: str,
-                password: str, mode: str, expected_files: dict[str, int] | None = None) -> MountSession:
+                password: str, mode: str, expected_files: dict[str, int] | None = None,
+                hidden_password: str | None = None,
+                protect_hidden: bool = False) -> MountSession:
     if platform.system() != "Linux":
         raise RuntimeError("The DenyFS dashboard needs Linux with FUSE. On Windows, run it inside WSL2.")
     if not binary.is_file() or not os.access(binary, os.X_OK):
@@ -162,10 +223,12 @@ def start_mount(binary: Path, mount_root: Path, vault_path: Path, vault_name: st
     mount_dir.mkdir(mode=0o700, exist_ok=False)
     process: subprocess.Popen | None = None
     try:
-        process = run_with_password(
+        process = run_with_passwords(
             binary,
             ["mount", str(vault_path), "--mountpoint", str(mount_dir)],
             password,
+            hidden_password=hidden_password,
+            protect_hidden=protect_hidden,
         )
         deadline = time.monotonic() + 15
         while time.monotonic() < deadline:
@@ -190,6 +253,7 @@ def start_mount(binary: Path, mount_root: Path, vault_path: Path, vault_name: st
             mount_dir=mount_dir,
             process=process,
             expected_files=expected_files or {},
+            vault_path=vault_path,
         )
     except Exception:
         if process is not None and process.poll() is None:
@@ -204,6 +268,7 @@ def start_mount(binary: Path, mount_root: Path, vault_path: Path, vault_name: st
         except OSError:
             pass
         raise
+
 
 
 def stop_mount(session: MountSession) -> bool:
@@ -368,6 +433,10 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 "session_id": session.session_id if session else None,
                 "session_mode": session.mode if session else None,
                 "vault_name": session.vault_name if session else None,
+                "vault_type": session.vault_type if session else None,
+                "volume_type": session.volume_type if session else None,
+                "protect_active": session.protect_active if session else False,
+                "current_phase": session.current_phase if session else None,
             })
             return
 
@@ -394,6 +463,10 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 return
             self._send_json(200, {
                 "vault_name": session.vault_name,
+                "vault_type": session.vault_type,
+                "volume_type": session.volume_type,
+                "protect_active": session.protect_active,
+                "current_phase": session.current_phase,
                 "files": list_mounted_files(session),
             })
             return
@@ -468,6 +541,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
         try:
             if route == "/api/encrypt":
                 self._encrypt()
+            elif route == "/api/encrypt/switch-phase":
+                self._switch_encrypt_phase()
             elif route == "/api/encrypt/file":
                 self._upload_encrypted_file()
             elif route == "/api/encrypt/finish":
@@ -501,7 +576,17 @@ class DashboardHandler(BaseHTTPRequestHandler):
     def _encrypt(self) -> None:
         body = self._read_json()
         stem = safe_vault_stem(body.get("name"))
+        vault_type = str(body.get("vault_type", "standard")).lower()
+        if vault_type not in {"standard", "deniable"}:
+            vault_type = "standard"
+
         password = validate_password(body.get("password"))
+        hidden_password: str | None = None
+        if vault_type == "deniable":
+            hidden_password = validate_password(body.get("hidden_password"))
+            if password == hidden_password:
+                raise ValueError("Outer and hidden passphrases must be distinct.")
+
         try:
             size_mib = int(body.get("size_mib", 0))
         except (TypeError, ValueError):
@@ -509,34 +594,98 @@ class DashboardHandler(BaseHTTPRequestHandler):
         if size_mib < 8 or size_mib > 65536:
             raise ValueError("Container size must be between 8 MiB and 65,536 MiB.")
 
-        raw_files = body.get("files")
-        if not isinstance(raw_files, list) or not raw_files or len(raw_files) > 63:
-            raise ValueError("Choose between 1 and 63 files for this flat DenyFS vault.")
-        expected: dict[str, int] = {}
-        total_bytes = 0
-        for item in raw_files:
-            if not isinstance(item, dict):
-                raise ValueError("The selected file list is invalid.")
-            name = safe_file_name(item.get("name"))
-            if name in expected:
-                raise ValueError(f"Two selected files have the same name: {name}")
-            try:
-                size = int(item.get("size", -1))
-            except (TypeError, ValueError):
-                raise ValueError("A selected file has an invalid size.")
-            if size < 0 or size > MAX_FILE_SIZE:
-                raise ValueError(f"{name} is larger than DenyFS's 4 GiB per-file limit.")
-            expected[name] = size
-            total_bytes += size
+        if vault_type == "deniable":
+            raw_outer = body.get("outer_files") or body.get("files")
+            raw_hidden = body.get("hidden_files")
+            if not isinstance(raw_outer, list) or not raw_outer or len(raw_outer) > 63:
+                raise ValueError("Choose between 1 and 63 cover files for the outer volume.")
+            if not isinstance(raw_hidden, list) or not raw_hidden or len(raw_hidden) > 63:
+                raise ValueError("Choose between 1 and 63 private files for the hidden volume.")
 
-        volume_bytes = size_mib * 1024 * 1024 // 2
-        required_bytes = total_bytes + max(5 * 1024 * 1024, total_bytes // 1024)
-        if required_bytes > volume_bytes:
-            need_mib = (required_bytes * 2 + 1024 * 1024 - 1) // (1024 * 1024)
-            raise ValueError(
-                f"Those files need about {need_mib} MiB of container space. "
-                "DenyFS exposes roughly half the container as the outer vault."
-            )
+            expected_outer: dict[str, int] = {}
+            total_outer = 0
+            for item in raw_outer:
+                if not isinstance(item, dict):
+                    raise ValueError("The cover file list is invalid.")
+                name = safe_file_name(item.get("name"))
+                if name in expected_outer:
+                    raise ValueError(f"Two cover files have the same name: {name}")
+                try:
+                    size = int(item.get("size", -1))
+                except (TypeError, ValueError):
+                    raise ValueError("A cover file has an invalid size.")
+                if size < 0 or size > MAX_FILE_SIZE:
+                    raise ValueError(f"{name} is larger than DenyFS's 4 GiB per-file limit.")
+                expected_outer[name] = size
+                total_outer += size
+
+            expected_hidden: dict[str, int] = {}
+            total_hidden = 0
+            for item in raw_hidden:
+                if not isinstance(item, dict):
+                    raise ValueError("The hidden file list is invalid.")
+                name = safe_file_name(item.get("name"))
+                if name in expected_hidden:
+                    raise ValueError(f"Two hidden files have the same name: {name}")
+                try:
+                    size = int(item.get("size", -1))
+                except (TypeError, ValueError):
+                    raise ValueError("A hidden file has an invalid size.")
+                if size < 0 or size > MAX_FILE_SIZE:
+                    raise ValueError(f"{name} is larger than DenyFS's 4 GiB per-file limit.")
+                expected_hidden[name] = size
+                total_hidden += size
+
+            outer_volume_bytes = (size_mib // 2) * 1024 * 1024
+            req_outer_bytes = total_outer + max(5 * 1024 * 1024, total_outer // 1024)
+            if req_outer_bytes > outer_volume_bytes:
+                need_mib = (req_outer_bytes * 2 + 1024 * 1024 - 1) // (1024 * 1024)
+                raise ValueError(
+                    f"Cover files need at least {need_mib} MiB of container space. "
+                    "DenyFS allocates roughly half the container to the outer volume."
+                )
+
+            hidden_size_mib = (size_mib // 2) - 1
+            if hidden_size_mib < 2:
+                raise ValueError("A deniable vault requires a container of at least 8 MiB.")
+            hidden_volume_bytes = hidden_size_mib * 1024 * 1024
+            req_hidden_bytes = total_hidden + max(5 * 1024 * 1024, total_hidden // 1024)
+            if req_hidden_bytes > hidden_volume_bytes:
+                need_hidden_vol_mib = (req_hidden_bytes + 1024 * 1024 - 1) // (1024 * 1024)
+                need_container_mib = (need_hidden_vol_mib + 1) * 2
+                raise ValueError(
+                    f"Hidden files need at least a {need_container_mib} MiB container. "
+                    f"Available hidden volume in a {size_mib} MiB container is {hidden_size_mib} MiB."
+                )
+        else:
+            raw_files = body.get("files")
+            if not isinstance(raw_files, list) or not raw_files or len(raw_files) > 63:
+                raise ValueError("Choose between 1 and 63 files for this flat DenyFS vault.")
+            expected: dict[str, int] = {}
+            total_bytes = 0
+            for item in raw_files:
+                if not isinstance(item, dict):
+                    raise ValueError("The selected file list is invalid.")
+                name = safe_file_name(item.get("name"))
+                if name in expected:
+                    raise ValueError(f"Two selected files have the same name: {name}")
+                try:
+                    size = int(item.get("size", -1))
+                except (TypeError, ValueError):
+                    raise ValueError("A selected file has an invalid size.")
+                if size < 0 or size > MAX_FILE_SIZE:
+                    raise ValueError(f"{name} is larger than DenyFS's 4 GiB per-file limit.")
+                expected[name] = size
+                total_bytes += size
+
+            volume_bytes = size_mib * 1024 * 1024 // 2
+            required_bytes = total_bytes + max(5 * 1024 * 1024, total_bytes // 1024)
+            if required_bytes > volume_bytes:
+                need_mib = (required_bytes * 2 + 1024 * 1024 - 1) // (1024 * 1024)
+                raise ValueError(
+                    f"Those files need about {need_mib} MiB of container space. "
+                    "DenyFS exposes roughly half the container as the outer vault."
+                )
 
         if not self._reserve_operation():
             self._send_json(409, {"error": "Finish or lock the current vault session first."})
@@ -557,33 +706,125 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 raise ValueError("A vault with that name already exists in the local library.")
             if shutil.disk_usage(self._data_dir()).free < size_mib * 1024 * 1024:
                 raise ValueError("There is not enough free space in the local vault library for that container.")
-            result = run_with_password(
+
+            # 1. Create container + outer volume
+            result = run_with_passwords(
                 self._binary(),
                 ["create", str(vault_path), "--size", str(size_mib)],
                 password,
             )
             if not isinstance(result, subprocess.CompletedProcess) or result.returncode != 0:
                 raise RuntimeError("DenyFS could not create the container. Check free disk space and the selected size.")
-            try:
-                session = start_mount(
-                    self._binary(), self._mount_root(), vault_path, vault_name, password,
-                    "encrypt", expected,
+
+            # 2. If deniable, create hidden volume using create-hidden
+            if vault_type == "deniable":
+                hidden_res = run_with_passwords(
+                    self._binary(),
+                    ["create-hidden", str(vault_path), "--size", str(hidden_size_mib)],
+                    password,
+                    hidden_password=hidden_password,
                 )
+                if not isinstance(hidden_res, subprocess.CompletedProcess) or hidden_res.returncode != 0:
+                    try:
+                        vault_path.unlink()
+                    except OSError:
+                        pass
+                    raise RuntimeError("DenyFS could not create the hidden volume inside this container.")
+
+            # 3. Mount outer volume
+            try:
+                if vault_type == "deniable":
+                    session = start_mount(
+                        self._binary(), self._mount_root(), vault_path, vault_name, password,
+                        "encrypt", expected_outer,
+                        hidden_password=hidden_password,
+                        protect_hidden=True,
+                    )
+                    session.vault_type = "deniable"
+                    session.current_phase = "outer"
+                    session.expected_outer = expected_outer
+                    session.expected_hidden = expected_hidden
+                    session.hidden_password = hidden_password
+                else:
+                    session = start_mount(
+                        self._binary(), self._mount_root(), vault_path, vault_name, password,
+                        "encrypt", expected,
+                    )
+                    session.vault_type = "standard"
+                    session.current_phase = "single"
             except RuntimeError as exc:
                 raise RuntimeError(f"The container was created as {vault_name}, but it could not be mounted. {exc}")
+
             with SESSION_LOCK:
                 STATE["session"] = session
+
             self._send_json(200, {
                 "session_id": session.session_id,
                 "vault_name": vault_name,
-                "file_count": len(expected),
-                "message": "Vault created and mounted. Files can now be encrypted into it.",
+                "vault_type": session.vault_type,
+                "current_phase": session.current_phase,
+                "file_count": len(session.expected_files),
+                "outer_count": len(session.expected_outer) if session.vault_type == "deniable" else 0,
+                "hidden_count": len(session.expected_hidden) if session.vault_type == "deniable" else 0,
+                "message": "Vault created and mounted.",
             })
         except Exception:
-            # Container creation is intentionally not undone on mount failure.
             raise
         finally:
             self._release_operation()
+
+    def _switch_encrypt_phase(self) -> None:
+        session = self._authorized_session()
+        if session is None or session.mode != "encrypt" or session.vault_type != "deniable":
+            self._send_json(403, {"error": "Active deniable encryption session required."})
+            return
+        if session.current_phase != "outer":
+            self._send_json(400, {"error": "Vault is not in outer volume phase."})
+            return
+
+        missing = set(session.expected_outer) - session.uploaded_outer
+        if missing:
+            self._send_json(409, {
+                "error": f"{len(missing)} cover file(s) were not uploaded yet."
+            })
+            return
+
+        if not stop_mount(session):
+            self._send_json(500, {"error": "Could not cleanly unmount outer volume before switching to hidden volume."})
+            return
+
+        try:
+            session.mount_dir.mkdir(mode=0o700, exist_ok=True)
+            process = run_with_passwords(
+                self._binary(),
+                ["mount", str(session.vault_path), "--mountpoint", str(session.mount_dir)],
+                session.hidden_password,
+            )
+            deadline = time.monotonic() + 15
+            while time.monotonic() < deadline:
+                if process.poll() is not None:
+                    raise RuntimeError("Could not mount hidden volume.")
+                if is_mount(session.mount_dir):
+                    break
+                time.sleep(0.05)
+            else:
+                process.terminate()
+                raise RuntimeError("Hidden volume mount timed out.")
+
+            session.process = process
+            session.current_phase = "hidden"
+            session.expected_files = session.expected_hidden
+            session.uploaded_files = session.uploaded_hidden
+
+            self._send_json(200, {
+                "session_id": session.session_id,
+                "vault_name": session.vault_name,
+                "current_phase": "hidden",
+                "file_count": len(session.expected_hidden),
+                "message": "Cover volume sealed. Now uploading hidden files into private volume.",
+            })
+        except Exception as exc:
+            self._send_json(500, {"error": f"Failed to mount hidden volume: {exc}"})
 
     def _upload_encrypted_file(self) -> None:
         session = self._authorized_session()
@@ -623,14 +864,28 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 except OSError:
                     pass
             raise
+        if session.vault_type == "deniable":
+            if session.current_phase == "outer":
+                session.uploaded_outer.add(name)
+            else:
+                session.uploaded_hidden.add(name)
         session.uploaded_files.add(name)
-        self._send_json(200, {"name": name, "size": length, "uploaded": len(session.uploaded_files)})
+        self._send_json(200, {
+            "name": name,
+            "size": length,
+            "uploaded": len(session.uploaded_files),
+            "phase": session.current_phase,
+        })
 
     def _finish_encrypt(self) -> None:
         session = self._authorized_session()
         if session is None or session.mode != "encrypt":
             self._send_json(403, {"error": "There is no active encryption session."})
             return
+        if session.vault_type == "deniable" and session.current_phase == "outer":
+            self._send_json(400, {"error": "Deniable vault requires completing the hidden volume phase before finishing."})
+            return
+
         missing = set(session.expected_files) - session.uploaded_files
         if missing:
             self._send_json(409, {
@@ -644,10 +899,12 @@ class DashboardHandler(BaseHTTPRequestHandler):
             if not stop_mount(session):
                 self._send_json(500, {"error": "DenyFS could not cleanly unmount the vault. Keep this dashboard open and retry Lock."})
                 return
+            session.hidden_password = None
             with SESSION_LOCK:
                 STATE["session"] = None
             self._send_json(200, {
                 "vault_name": session.vault_name,
+                "vault_type": session.vault_type,
                 "file_count": len(session.uploaded_files),
                 "message": "Files encrypted and the vault is locked.",
             })
@@ -658,14 +915,39 @@ class DashboardHandler(BaseHTTPRequestHandler):
         body = self._read_json()
         name = safe_library_name(body.get("vault_name", ""))
         password = validate_password(body.get("password"))
+        protect_hidden = bool(body.get("protect_hidden", False))
+        hidden_password: str | None = None
+        if protect_hidden:
+            hidden_password = validate_password(body.get("hidden_password"))
+            if password == hidden_password:
+                raise ValueError("Outer and hidden passphrases must be distinct to protect hidden volume.")
+
         vault_path = check_container(self._data_dir(), name)
         if not self._reserve_operation():
             self._send_json(409, {"error": "Finish or lock the current vault session first."})
             return
         try:
+            open_res = run_with_passwords(
+                self._binary(),
+                ["open", str(vault_path)],
+                password,
+                hidden_password=hidden_password,
+                protect_hidden=protect_hidden,
+            )
+            if not isinstance(open_res, subprocess.CompletedProcess) or open_res.returncode != 0:
+                raise ValueError("DenyFS could not unlock this vault. Check the passphrase and protection settings.")
+
+            is_hidden = "Volume type      : HIDDEN" in (open_res.stdout or "")
+            vol_type = "HIDDEN" if is_hidden else "OUTER"
+            protect_active = "Protection active: YES" in (open_res.stdout or "")
+
             session = start_mount(
                 self._binary(), self._mount_root(), vault_path, name, password, "decrypt",
+                hidden_password=hidden_password,
+                protect_hidden=protect_hidden,
             )
+            session.volume_type = vol_type
+            session.protect_active = protect_active
             with SESSION_LOCK:
                 STATE["session"] = session
             try:
@@ -679,8 +961,10 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self._send_json(200, {
                 "session_id": session.session_id,
                 "vault_name": name,
+                "volume_type": vol_type,
+                "protect_active": protect_active,
                 "files": files,
-                "message": "Vault unlocked. Choose a file to decrypt and download.",
+                "message": f"{vol_type.capitalize()} volume unlocked.",
             })
         finally:
             self._release_operation()

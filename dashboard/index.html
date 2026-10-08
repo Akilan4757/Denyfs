@@ -95,33 +95,123 @@
         <div class="page-intro"><p class="eyebrow"><span class="eyebrow-spark"></span> PRIVATE STORAGE</p><h1 id="encrypt-title">Create a vault.</h1><p>Choose the files you want to protect. DenyFS encrypts them inside a new local container.</p></div>
         <div class="workflow-layout">
           <div class="workflow-main glass-panel">
-            <div class="step-heading"><span class="step-number">01</span><div><h2>Add files</h2><p>Up to 63 files · 4 GiB per file · flat folder</p></div></div>
-            <input id="encrypt-file-input" class="visually-hidden" type="file" multiple>
-            <div class="dropzone" id="dropzone" tabindex="0" role="button" aria-label="Choose files to encrypt">
-              <span class="drop-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5"/><path d="M5 14v4.5A1.5 1.5 0 0 0 6.5 20h11a1.5 1.5 0 0 0 1.5-1.5V14"/></svg></span>
-              <strong>Drop files here</strong><span>or <button class="text-button" id="browse-files" type="button">browse your device</button></span>
-              <small>Files are sent only to this device's local dashboard.</small>
-            </div>
-            <div class="selected-files-wrap" id="selected-files-wrap" hidden>
-              <div class="file-list-heading"><strong id="selected-count">Selected files</strong><button type="button" class="text-button" id="clear-files">Clear all</button></div>
-              <ul id="selected-files" class="selected-files"></ul>
-              <div class="file-total-row"><span>Total selected</span><strong id="selected-total">0 B</strong></div>
+            <div class="vault-type-switch-wrap">
+              <span class="vault-type-label">VAULT ARCHITECTURE</span>
+              <div class="vault-type-switch" role="tablist" aria-label="Vault Architecture">
+                <button class="vault-type-btn is-active" id="vault-type-standard" type="button" role="tab" aria-selected="true">
+                  <span class="vt-radio"></span>
+                  <span class="vt-content">
+                    <strong>Standard Vault</strong>
+                    <small>Single volume · 1 passphrase · standard plausible deniability</small>
+                  </span>
+                </button>
+                <button class="vault-type-btn" id="vault-type-deniable" type="button" role="tab" aria-selected="false">
+                  <span class="vt-radio"></span>
+                  <span class="vt-content">
+                    <strong>Deniable Vault (Double Volume)</strong>
+                    <small>Outer cover files + Hidden private volume inside 1 container</small>
+                  </span>
+                </button>
+              </div>
             </div>
 
-            <div class="step-heading step-heading-spaced"><span class="step-number">02</span><div><h2>Set up your vault</h2><p>Choose its name, size, and passphrase.</p></div></div>
+            <!-- Standard Vault File Selection -->
+            <div id="standard-files-section">
+              <div class="step-heading"><span class="step-number">01</span><div><h2>Add files</h2><p>Up to 63 files · 4 GiB per file · flat folder</p></div></div>
+              <input id="encrypt-file-input" class="visually-hidden" type="file" multiple>
+              <div class="dropzone" id="dropzone" tabindex="0" role="button" aria-label="Choose files to encrypt">
+                <span class="drop-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5"/><path d="M5 14v4.5A1.5 1.5 0 0 0 6.5 20h11a1.5 1.5 0 0 0 1.5-1.5V14"/></svg></span>
+                <strong>Drop files here</strong><span>or <button class="text-button" id="browse-files" type="button">browse your device</button></span>
+                <small>Files are sent only to this device's local dashboard.</small>
+              </div>
+              <div class="selected-files-wrap" id="selected-files-wrap" hidden>
+                <div class="file-list-heading"><strong id="selected-count">Selected files</strong><button type="button" class="text-button" id="clear-files">Clear all</button></div>
+                <ul id="selected-files" class="selected-files"></ul>
+                <div class="file-total-row"><span>Total selected</span><strong id="selected-total">0 B</strong></div>
+              </div>
+            </div>
+
+            <!-- Deniable Vault File Selection -->
+            <div id="deniable-files-section" hidden>
+              <div class="step-heading"><span class="step-number">01</span><div><h2>Add files to both volumes</h2><p>Select decoy cover files and private hidden files.</p></div></div>
+              <div class="deniable-files-grid">
+                <!-- Outer / Cover Files -->
+                <div class="deniable-vol-box outer-box">
+                  <div class="deniable-vol-header">
+                    <span class="vol-box-badge outer">OUTER VOLUME · COVER</span>
+                    <h3>Cover / Decoy files</h3>
+                    <p>Visible if unlocked with the outer passphrase under duress.</p>
+                  </div>
+                  <input id="encrypt-outer-input" class="visually-hidden" type="file" multiple>
+                  <div class="dropzone dropzone-sm" id="dropzone-outer" tabindex="0" role="button" aria-label="Choose cover files">
+                    <span class="drop-icon blue"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5"/><path d="M5 14v4.5A1.5 1.5 0 0 0 6.5 20h11a1.5 1.5 0 0 0 1.5-1.5V14"/></svg></span>
+                    <strong>Drop cover files here</strong><span>or <button class="text-button" id="browse-outer-files" type="button">browse</button></span>
+                  </div>
+                  <div class="selected-files-wrap" id="selected-outer-files-wrap" hidden>
+                    <div class="file-list-heading"><strong id="selected-outer-count">0 cover files</strong><button type="button" class="text-button" id="clear-outer-files">Clear</button></div>
+                    <ul id="selected-outer-files" class="selected-files"></ul>
+                    <div class="file-total-row"><span>Cover total</span><strong id="selected-outer-total">0 B</strong></div>
+                  </div>
+                </div>
+
+                <!-- Hidden / Private Files -->
+                <div class="deniable-vol-box hidden-box">
+                  <div class="deniable-vol-header">
+                    <span class="vol-box-badge hidden-vol">HIDDEN VOLUME · PRIVATE</span>
+                    <h3>Hidden / Private files</h3>
+                    <p>Steganographically hidden. No header or structure visible to scanners.</p>
+                  </div>
+                  <input id="encrypt-hidden-input" class="visually-hidden" type="file" multiple>
+                  <div class="dropzone dropzone-sm" id="dropzone-hidden" tabindex="0" role="button" aria-label="Choose private files">
+                    <span class="drop-icon violet"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5"/><path d="M5 14v4.5A1.5 1.5 0 0 0 6.5 20h11a1.5 1.5 0 0 0 1.5-1.5V14"/></svg></span>
+                    <strong>Drop private files here</strong><span>or <button class="text-button" id="browse-hidden-files" type="button">browse</button></span>
+                  </div>
+                  <div class="selected-files-wrap" id="selected-hidden-files-wrap" hidden>
+                    <div class="file-list-heading"><strong id="selected-hidden-count">0 private files</strong><button type="button" class="text-button" id="clear-hidden-files">Clear</button></div>
+                    <ul id="selected-hidden-files" class="selected-files"></ul>
+                    <div class="file-total-row"><span>Private total</span><strong id="selected-hidden-total">0 B</strong></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="step-heading step-heading-spaced"><span class="step-number">02</span><div><h2>Set up your vault</h2><p>Choose container name, size, and passphrases.</p></div></div>
             <div class="form-grid">
               <label class="field-label" for="vault-name">Vault name<span class="field-input-wrap"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7.5h6l1.8 2H20v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-11Z"/><path d="M4 10h16"/></svg><input id="vault-name" value="My private vault" maxlength="64" autocomplete="off" spellcheck="false"></span></label>
               <label class="field-label" for="vault-size">Container size<span class="field-input-wrap size-wrap"><input id="vault-size" type="number" min="8" max="65536" step="1" value="64" inputmode="numeric"><span class="unit">MiB</span></span><span class="field-help" id="capacity-hint">About 32 MiB available for files.</span></label>
-              <label class="field-label" for="encrypt-password">Passphrase<span class="field-input-wrap"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="10" width="16" height="10.5" rx="2.5"/><path d="M8 10V7.3a4 4 0 0 1 8 0V10"/></svg><input id="encrypt-password" type="password" autocomplete="new-password" placeholder="Create a strong passphrase"><button class="reveal-button" type="button" data-reveal="encrypt-password" aria-label="Show passphrase"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.3-6 9.5-6 9.5 6 9.5 6-3.3 6-9.5 6-9.5-6-9.5-6Z"/><circle cx="12" cy="12" r="2.5"/></svg></button></span><span class="field-help">Use a memorable phrase with 12 or more characters.</span></label>
+            </div>
+
+            <!-- Standard Passphrase Grid -->
+            <div class="form-grid form-grid-pass" id="standard-password-fields">
+              <label class="field-label" for="encrypt-password">Passphrase<span class="field-input-wrap"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="10" width="16" height="10.5" rx="2.5"/><path d="M8 10V7.3a4 4 0 0 1 8 0V10"/></svg><input id="encrypt-password" type="password" autocomplete="new-password" placeholder="Create a strong passphrase"><button class="reveal-button" type="button" data-reveal="encrypt-password" aria-label="Show passphrase"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.3-6 9.5-6 9.5 6 9.5 6-3.3 6-9.5 6-9.5-6Z"/><circle cx="12" cy="12" r="2.5"/></svg></button></span><span class="field-help">Use a memorable phrase with 12 or more characters.</span></label>
               <label class="field-label" for="confirm-password">Confirm passphrase<span class="field-input-wrap"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.2 4.2L19 7"/></svg><input id="confirm-password" type="password" autocomplete="new-password" placeholder="Enter it again"></span></label>
             </div>
-            <div class="capacity-note"><span class="note-dot"></span><span>DenyFS uses about half of the container for this vault. Actual free space is slightly lower because filesystem metadata also needs room.</span></div>
+
+            <!-- Deniable Passphrase Grid -->
+            <div class="deniable-password-section" id="deniable-password-fields" hidden>
+              <div class="deniable-pass-group">
+                <span class="deniable-pass-tag outer-tag">OUTER VOLUME (DECOY)</span>
+                <div class="form-grid">
+                  <label class="field-label" for="encrypt-outer-password">Outer passphrase<span class="field-input-wrap"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="10" width="16" height="10.5" rx="2.5"/><path d="M8 10V7.3a4 4 0 0 1 8 0V10"/></svg><input id="encrypt-outer-password" type="password" autocomplete="new-password" placeholder="Passphrase for cover files"><button class="reveal-button" type="button" data-reveal="encrypt-outer-password" aria-label="Show passphrase"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.3-6 9.5-6 9.5 6 9.5 6-3.3 6-9.5 6-9.5-6Z"/><circle cx="12" cy="12" r="2.5"/></svg></button></span><span class="field-help">Used to open outer/cover volume.</span></label>
+                  <label class="field-label" for="confirm-outer-password">Confirm outer passphrase<span class="field-input-wrap"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.2 4.2L19 7"/></svg><input id="confirm-outer-password" type="password" autocomplete="new-password" placeholder="Confirm outer passphrase"></span></label>
+                </div>
+              </div>
+              <div class="deniable-pass-group">
+                <span class="deniable-pass-tag hidden-tag">HIDDEN VOLUME (TRUE SECRETS)</span>
+                <div class="form-grid">
+                  <label class="field-label" for="encrypt-hidden-password">Hidden passphrase<span class="field-input-wrap"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="10" width="16" height="10.5" rx="2.5"/><path d="M8 10V7.3a4 4 0 0 1 8 0V10"/></svg><input id="encrypt-hidden-password" type="password" autocomplete="new-password" placeholder="Passphrase for private files"><button class="reveal-button" type="button" data-reveal="encrypt-hidden-password" aria-label="Show passphrase"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.3-6 9.5-6 9.5 6 9.5 6-3.3 6-9.5 6-9.5-6Z"/><circle cx="12" cy="12" r="2.5"/></svg></button></span><span class="field-help">Must be completely different from outer passphrase.</span></label>
+                  <label class="field-label" for="confirm-hidden-password">Confirm hidden passphrase<span class="field-input-wrap"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.2 4.2L19 7"/></svg><input id="confirm-hidden-password" type="password" autocomplete="new-password" placeholder="Confirm hidden passphrase"></span></label>
+                </div>
+              </div>
+            </div>
+
+            <div class="capacity-note"><span class="note-dot"></span><span id="capacity-note-text">DenyFS uses about half of the container for this vault. Actual free space is slightly lower because filesystem metadata also needs room.</span></div>
             <div class="form-error" id="encrypt-error" role="alert" hidden></div>
-            <div class="workflow-footer"><div class="privacy-caption"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5 20 7v5.3c0 5.2-3.3 8.3-8 10.2-4.7-1.9-8-5-8-10.2V7l8-3.5Z"/><path d="m9 12.1 2 2 4.2-4.4"/></svg><span>Local processing<br><small>Your files are not sent to a cloud service.</small></span></div><button class="primary-button" id="encrypt-submit" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="10" width="16" height="10.5" rx="2.5"/><path d="M8 10V7.3a4 4 0 0 1 8 0V10"/></svg><span>Encrypt files</span><span class="button-arrow">→</span></button></div>
+            <div class="workflow-footer"><div class="privacy-caption"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5 20 7v5.3c0 5.2-3.3 8.3-8 10.2-4.7-1.9-8-5-8-10.2V7l8-3.5Z"/><path d="m9 12.1 2 2 4.2-4.4"/></svg><span>Local processing<br><small>Your files are not sent to a cloud service.</small></span></div><button class="primary-button" id="encrypt-submit" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="10" width="16" height="10.5" rx="2.5"/><path d="M8 10V7.3a4 4 0 0 1 8 0V10"/></svg><span id="encrypt-submit-text">Encrypt files</span><span class="button-arrow">→</span></button></div>
           </div>
           <aside class="workflow-aside">
-            <div class="aside-card glass-panel"><div class="aside-icon blue"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5 20 7v5.3c0 5.2-3.3 8.3-8 10.2-4.7-1.9-8-5-8-10.2V7l8-3.5Z"/><path d="m9 12.1 2 2 4.2-4.4"/></svg></div><h3>Protection, built in</h3><p>DenyFS encrypts the whole container with AES-256-XTS. A password-derived key protects access to your vault.</p><div class="aside-divider"></div><div class="aside-spec"><span>Encryption</span><strong>AES-256-XTS</strong></div><div class="aside-spec"><span>Key derivation</span><strong>Argon2id</strong></div><div class="aside-spec"><span>File limit</span><strong>4 GiB each</strong></div></div>
-            <div class="aside-card tip-card glass-panel"><span class="tip-icon">✦</span><div><strong>Passphrase tip</strong><p>Four or five unrelated words are easier to remember and harder to guess than a short password.</p></div></div>
+            <div class="aside-card glass-panel"><div class="aside-icon blue"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5 20 7v5.3c0 5.2-3.3 8.3-8 10.2-4.7-1.9-8-5-8-10.2V7l8-3.5Z"/><path d="m9 12.1 2 2 4.2-4.4"/></svg></div><h3>Protection, built in</h3><p>DenyFS encrypts the whole container with AES-256-XTS. A password-derived key protects access to your vault.</p><div class="aside-divider"></div><div class="aside-spec"><span>Encryption</span><strong>AES-256-XTS</strong></div><div class="aside-spec"><span>Key derivation</span><strong>Argon2id</strong></div><div class="aside-spec"><span>Deniability</span><strong>Double Volume</strong></div><div class="aside-spec"><span>File limit</span><strong>4 GiB each</strong></div></div>
+            <div class="aside-card tip-card glass-panel"><span class="tip-icon">✦</span><div><strong>Plausible deniability</strong><p>A hidden volume resides in unallocated sectors and cannot be distinguished from random cryptographic noise without its passphrase.</p></div></div>
           </aside>
         </div>
       </section>
@@ -134,17 +224,47 @@
             <label class="field-label" for="decrypt-vault">Vault library<span class="field-input-wrap select-wrap"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7.5h6l1.8 2H20v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-11Z"/><path d="M4 10h16"/></svg><select id="decrypt-vault"><option value="">Loading local vaults…</option></select><span class="select-chevron">⌄</span></span></label>
             <div class="import-row"><div class="import-copy"><span class="import-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5"/><path d="M5 14v4.5A1.5 1.5 0 0 0 6.5 20h11a1.5 1.5 0 0 0 1.5-1.5V14"/></svg></span><span><strong>Import an existing container</strong><small>Large files are copied to the local vault library.</small></span></div><input id="import-vault-input" class="visually-hidden" type="file" accept=".denyfs,.img,.dny"><button class="secondary-button" id="import-vault-button" type="button">Choose file</button></div>
             <div class="import-progress" id="import-progress" hidden><div class="progress-track"><span id="import-progress-bar"></span></div><div><span id="import-progress-label">Importing…</span><span id="import-progress-percent">0%</span></div></div>
-            <div class="step-heading step-heading-spaced"><span class="step-number mint-step">02</span><div><h2>Unlock securely</h2><p>Your passphrase is used only to open this vault.</p></div></div>
-            <label class="field-label" for="decrypt-password">Vault passphrase<span class="field-input-wrap"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="10" width="16" height="10.5" rx="2.5"/><path d="M8 10V7.3a4 4 0 0 1 8 0V10"/></svg><input id="decrypt-password" type="password" autocomplete="current-password" placeholder="Enter the passphrase"><button class="reveal-button" type="button" data-reveal="decrypt-password" aria-label="Show passphrase"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.3-6 9.5-6 9.5 6 9.5 6-3.3 6-9.5 6-9.5-6-9.5-6Z"/><circle cx="12" cy="12" r="2.5"/></svg></button></span></label>
+            <div class="step-heading step-heading-spaced"><span class="step-number mint-step">02</span><div><h2>Unlock securely</h2><p>Provide the passphrase for the volume you wish to open.</p></div></div>
+            <label class="field-label" for="decrypt-password">Vault passphrase<span class="field-input-wrap"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="10" width="16" height="10.5" rx="2.5"/><path d="M8 10V7.3a4 4 0 0 1 8 0V10"/></svg><input id="decrypt-password" type="password" autocomplete="current-password" placeholder="Enter outer or hidden passphrase"><button class="reveal-button" type="button" data-reveal="decrypt-password" aria-label="Show passphrase"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.3-6 9.5-6 9.5 6 9.5 6-3.3 6-9.5 6-9.5-6Z"/><circle cx="12" cy="12" r="2.5"/></svg></button></span><span class="field-help">Entering the hidden passphrase directly mounts the hidden volume.</span></label>
+
+            <!-- Protect Hidden Volume Option -->
+            <div class="protect-hidden-row">
+              <label class="checkbox-label" for="protect-hidden-checkbox">
+                <input type="checkbox" id="protect-hidden-checkbox">
+                <span class="checkbox-custom"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.2 4.2L19 7"/></svg></span>
+                <span class="checkbox-text">
+                  <strong>Protect hidden volume during outer mount</strong>
+                  <small>Locks hidden sectors against accidental overwrites (<code>--protect-hidden</code>).</small>
+                </span>
+              </label>
+            </div>
+            <div class="protect-hidden-pass-wrap" id="protect-hidden-pass-wrap" hidden>
+              <label class="field-label" for="decrypt-hidden-password">Hidden volume passphrase (for sector lock)<span class="field-input-wrap"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="10" width="16" height="10.5" rx="2.5"/><path d="M8 10V7.3a4 4 0 0 1 8 0V10"/></svg><input id="decrypt-hidden-password" type="password" autocomplete="current-password" placeholder="Enter hidden passphrase"><button class="reveal-button" type="button" data-reveal="decrypt-hidden-password" aria-label="Show passphrase"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.3-6 9.5-6 9.5 6 9.5 6-3.3 6-9.5 6-9.5-6Z"/><circle cx="12" cy="12" r="2.5"/></svg></button></span><span class="field-help">DenyFS uses this to find the hidden volume boundaries and write-protect them.</span></label>
+            </div>
+
             <div class="form-error" id="decrypt-error" role="alert" hidden></div>
             <button class="primary-button unlock-button" id="decrypt-submit" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="10" width="16" height="10.5" rx="2.5"/><path d="M8 10V7.3a4 4 0 0 1 8 0V10m4.5 3h-3"/></svg><span>Unlock vault</span><span class="button-arrow">→</span></button>
             <div class="opened-vault" id="opened-vault" hidden>
-              <div class="opened-heading"><div><span class="eyebrow">VAULT UNLOCKED</span><h3 id="opened-vault-name">Vault files</h3></div><button class="lock-button" id="lock-vault" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="10" width="16" height="10.5" rx="2.5"/><path d="M8 10V7.3a4 4 0 0 1 8 0V10"/></svg> Lock vault</button></div>
+              <div class="opened-heading">
+                <div>
+                  <div class="opened-badges-row">
+                    <span class="eyebrow">VAULT UNLOCKED</span>
+                    <span class="vol-badge vol-outer" id="opened-volume-badge">Outer Volume</span>
+                    <span class="vol-badge vol-protected" id="opened-protect-badge" hidden>Protected</span>
+                  </div>
+                  <h3 id="opened-vault-name">Vault files</h3>
+                </div>
+                <button class="lock-button" id="lock-vault" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="10" width="16" height="10.5" rx="2.5"/><path d="M8 10V7.3a4 4 0 0 1 8 0V10"/></svg> Lock vault</button>
+              </div>
+              <div class="volume-notice-bar" id="opened-volume-notice">
+                <span class="notice-indicator"></span>
+                <span id="opened-volume-notice-text">Mounted outer volume.</span>
+              </div>
               <div class="plaintext-notice"><span>!</span><p>Downloaded files are decrypted and saved by your browser. Choose a trusted location.</p></div>
               <ul class="decrypted-files" id="decrypted-files"></ul>
             </div>
           </div>
-          <aside class="workflow-aside"><div class="aside-card glass-panel"><div class="aside-icon mint"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5 20 7v5.3c0 5.2-3.3 8.3-8 10.2-4.7-1.9-8-5-8-10.2V7l8-3.5Z"/><path d="m9 12.1 2 2 4.2-4.4"/></svg></div><h3>Your vault opens locally</h3><p>Files are read from the mounted DenyFS vault. The passphrase is not written to the dashboard library.</p><div class="aside-divider"></div><div class="aside-spec"><span>Access</span><strong>Passphrase required</strong></div><div class="aside-spec"><span>After decrypting</span><strong>Lock the vault</strong></div></div><div class="aside-card tip-card glass-panel"><span class="tip-icon mint-tip">↗</span><div><strong>Need a container?</strong><p>Create one on the Encrypt files page or import an existing DenyFS container above.</p></div></div></aside>
+          <aside class="workflow-aside"><div class="aside-card glass-panel"><div class="aside-icon mint"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5 20 7v5.3c0 5.2-3.3 8.3-8 10.2-4.7-1.9-8-5-8-10.2V7l8-3.5Z"/><path d="m9 12.1 2 2 4.2-4.4"/></svg></div><h3>Direct volume access</h3><p>DenyFS identifies the volume automatically by testing the passphrase against the outer header first, then the hidden volume header.</p><div class="aside-divider"></div><div class="aside-spec"><span>Outer volume</span><strong>Passphrase A</strong></div><div class="aside-spec"><span>Hidden volume</span><strong>Passphrase B</strong></div><div class="aside-spec"><span>Sector lock</span><strong>--protect-hidden</strong></div><div class="aside-spec"><span>After decrypting</span><strong>Lock the vault</strong></div></div><div class="aside-card tip-card glass-panel"><span class="tip-icon mint-tip">↗</span><div><strong>Need a container?</strong><p>Create one on the Encrypt files page or import an existing DenyFS container above.</p></div></div></aside>
         </div>
       </section>
 

@@ -4,7 +4,10 @@
   const $ = (selector, root = document) => root.querySelector(selector);
   const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
   const state = {
-    files: new Map(),
+    vaultType: "standard", // "standard" | "deniable"
+    files: new Map(), // Standard vault files
+    outerFiles: new Map(), // Deniable cover files
+    hiddenFiles: new Map(), // Deniable private files
     vaults: [],
     sessionId: null,
     sessionMode: null,
@@ -262,7 +265,7 @@
       if (status.busy) setConnection(true, "Preparing vault…");
       if (status.session_id && status.session_mode === "decrypt") {
         const opened = await requestJSON("/api/session/files", { headers: { "X-DenyFS-Session": status.session_id } });
-        showDecryptedFiles(opened.files, opened.vault_name);
+        showDecryptedFiles(opened.files, opened.vault_name, opened.volume_type, opened.protect_active);
       } else if (status.session_id && status.session_mode === "encrypt") {
         toast("An encryption session was open when the dashboard reconnected. Lock it when ready to save the files already added.");
       }
@@ -272,12 +275,12 @@
     }
   }
 
-  function addFiles(fileList) {
+  function validateIncomingFiles(fileList, targetMap, label = "vault") {
     const incoming = [...fileList];
     const errors = [];
     for (const file of incoming) {
-      if (state.files.size >= 63 && !state.files.has(file.name)) {
-        errors.push("DenyFS supports at most 63 files in one vault.");
+      if (targetMap.size >= 63 && !targetMap.has(file.name)) {
+        errors.push(`DenyFS supports at most 63 files in the ${label}.`);
         break;
       }
       if (file.name.includes("/") || file.name.includes("\\") || file.name === "." || file.name === ".." || /[\x00-\x1f\x7f]/.test(file.name)) {
@@ -292,24 +295,41 @@
         errors.push(`${file.name} exceeds the 4 GiB per-file limit.`);
         continue;
       }
-      if (state.files.has(file.name)) {
-        errors.push(`A file named ${file.name} is already selected. DenyFS uses a flat folder.`);
+      if (targetMap.has(file.name)) {
+        errors.push(`A file named ${file.name} is already selected in the ${label}.`);
         continue;
       }
-      state.files.set(file.name, file);
+      targetMap.set(file.name, file);
     }
+    return errors;
+  }
+
+  function addFiles(fileList) {
+    const errors = validateIncomingFiles(fileList, state.files, "vault");
     renderSelectedFiles();
     if (errors.length) toast(errors[0], "error");
   }
 
-  function renderSelectedFiles() {
-    const container = $("#selected-files");
+  function addOuterFiles(fileList) {
+    const errors = validateIncomingFiles(fileList, state.outerFiles, "outer volume");
+    renderOuterFiles();
+    if (errors.length) toast(errors[0], "error");
+  }
+
+  function addHiddenFiles(fileList) {
+    const errors = validateIncomingFiles(fileList, state.hiddenFiles, "hidden volume");
+    renderHiddenFiles();
+    if (errors.length) toast(errors[0], "error");
+  }
+
+  function renderFileList(targetMap, listId, wrapId, countId, totalId, countLabel, onRemove) {
+    const container = $(listId);
     container.replaceChildren();
-    const files = [...state.files.values()];
-    $("#selected-files-wrap").hidden = !files.length;
-    $("#selected-count").textContent = `${files.length} selected file${files.length === 1 ? "" : "s"}`;
+    const files = [...targetMap.values()];
+    $(wrapId).hidden = !files.length;
+    $(countId).textContent = `${files.length} ${countLabel}${files.length === 1 ? "" : "s"}`;
     const total = files.reduce((sum, file) => sum + file.size, 0);
-    $("#selected-total").textContent = formatBytes(total);
+    $(totalId).textContent = formatBytes(total);
     files.forEach(file => {
       const row = document.createElement("li");
       row.className = "selected-file";
@@ -332,34 +352,131 @@
       remove.setAttribute("aria-label", `Remove ${file.name}`);
       remove.textContent = "×";
       remove.addEventListener("click", () => {
-        state.files.delete(file.name);
-        renderSelectedFiles();
+        targetMap.delete(file.name);
+        onRemove();
       });
       row.append(icon, info, size, remove);
       container.append(row);
     });
-    updateCapacityHint(total);
-    if (!state.sizeTouched && files.length) {
+    return total;
+  }
+
+  function renderSelectedFiles() {
+    const total = renderFileList(
+      state.files,
+      "#selected-files",
+      "#selected-files-wrap",
+      "#selected-count",
+      "#selected-total",
+      "selected file",
+      renderSelectedFiles
+    );
+    if (!state.sizeTouched && state.vaultType === "standard" && state.files.size) {
       const reserve = 5.5 * 1024 ** 2;
       const recommended = Math.max(8, Math.ceil(((total + reserve) * 2) / (1024 ** 2)));
       $("#vault-size").value = String(recommended);
-      updateCapacityHint(total);
     }
+    updateCapacityHint();
   }
 
-  function updateCapacityHint(total) {
+  function renderOuterFiles() {
+    renderFileList(
+      state.outerFiles,
+      "#selected-outer-files",
+      "#selected-outer-files-wrap",
+      "#selected-outer-count",
+      "#selected-outer-total",
+      "cover file",
+      renderOuterFiles
+    );
+    adjustDeniableRecommendedSize();
+    updateCapacityHint();
+  }
+
+  function renderHiddenFiles() {
+    renderFileList(
+      state.hiddenFiles,
+      "#selected-hidden-files",
+      "#selected-hidden-files-wrap",
+      "#selected-hidden-count",
+      "#selected-hidden-total",
+      "private file",
+      renderHiddenFiles
+    );
+    adjustDeniableRecommendedSize();
+    updateCapacityHint();
+  }
+
+  function adjustDeniableRecommendedSize() {
+    if (state.sizeTouched || state.vaultType !== "deniable") return;
+    if (!state.outerFiles.size && !state.hiddenFiles.size) return;
+    const totalOuter = [...state.outerFiles.values()].reduce((sum, f) => sum + f.size, 0);
+    const totalHidden = [...state.hiddenFiles.values()].reduce((sum, f) => sum + f.size, 0);
+    const reqOuterMiB = Math.ceil(((totalOuter + 5.5 * 1024 ** 2) * 2) / (1024 ** 2));
+    const reqHiddenMiB = Math.ceil(((totalHidden + 6.5 * 1024 ** 2) * 2) / (1024 ** 2)) + 2;
+    const recommended = Math.max(16, Math.max(reqOuterMiB, reqHiddenMiB));
+    $("#vault-size").value = String(recommended);
+  }
+
+  function updateCapacityHint() {
     const raw = Number($("#vault-size").value);
+    const hint = $("#capacity-hint");
     if (!Number.isFinite(raw) || raw <= 0) {
-      $("#capacity-hint").textContent = "Enter a container size in MiB.";
+      hint.textContent = "Enter a container size in MiB.";
+      hint.classList.remove("capacity-short");
       return;
     }
-    const approximate = Math.max(0, raw * 1024 ** 2 / 2 - 5.5 * 1024 ** 2);
-    const hint = $("#capacity-hint");
-    hint.textContent = `About ${formatBytes(approximate)} available for file data.`;
-    hint.classList.toggle("capacity-short", total > approximate);
+
+    if (state.vaultType === "standard") {
+      const approximate = Math.max(0, raw * 1024 ** 2 / 2 - 5.5 * 1024 ** 2);
+      const total = [...state.files.values()].reduce((sum, file) => sum + file.size, 0);
+      hint.textContent = `About ${formatBytes(approximate)} available for file data.`;
+      hint.classList.toggle("capacity-short", total > approximate);
+    } else {
+      const outerVolumeBytes = Math.floor(raw / 2) * 1024 ** 2;
+      const outerApprox = Math.max(0, outerVolumeBytes - 5.5 * 1024 ** 2);
+      const hiddenVolumeBytes = Math.max(0, (Math.floor(raw / 2) - 1) * 1024 ** 2);
+      const hiddenApprox = Math.max(0, hiddenVolumeBytes - 6.5 * 1024 ** 2);
+      const totalOuter = [...state.outerFiles.values()].reduce((sum, f) => sum + f.size, 0);
+      const totalHidden = [...state.hiddenFiles.values()].reduce((sum, f) => sum + f.size, 0);
+      const isShort = totalOuter > outerApprox || totalHidden > hiddenApprox;
+      hint.textContent = `Available: ~${formatBytes(outerApprox)} for cover files · ~${formatBytes(hiddenApprox)} for hidden files.`;
+      hint.classList.toggle("capacity-short", isShort);
+    }
   }
 
-  function uploadFile(file, sessionId, index, count, priorBytes, totalBytes) {
+  function setVaultType(type) {
+    state.vaultType = type;
+    const isStandard = type === "standard";
+    $("#vault-type-standard").classList.toggle("is-active", isStandard);
+    $("#vault-type-standard").setAttribute("aria-selected", isStandard ? "true" : "false");
+    $("#vault-type-deniable").classList.toggle("is-active", !isStandard);
+    $("#vault-type-deniable").setAttribute("aria-selected", !isStandard ? "true" : "false");
+
+    $("#standard-files-section").hidden = !isStandard;
+    $("#deniable-files-section").hidden = isStandard;
+    $("#standard-password-fields").hidden = !isStandard;
+    $("#deniable-password-fields").hidden = isStandard;
+
+    const noteText = $("#capacity-note-text");
+    const submitText = $("#encrypt-submit-text");
+    if (isStandard) {
+      noteText.textContent = "DenyFS uses about half of the container for this vault. Actual free space is slightly lower because filesystem metadata also needs room.";
+      submitText.textContent = "Encrypt files";
+      if (!state.sizeTouched && state.files.size) {
+        const total = [...state.files.values()].reduce((sum, f) => sum + f.size, 0);
+        const reserve = 5.5 * 1024 ** 2;
+        $("#vault-size").value = String(Math.max(8, Math.ceil(((total + reserve) * 2) / (1024 ** 2))));
+      }
+    } else {
+      noteText.textContent = "DenyFS splits the container into an outer decoy volume (front half) and an invisible hidden volume (rear half). Both volumes are individually formatted and encrypted.";
+      submitText.textContent = "Create double volume vault";
+      adjustDeniableRecommendedSize();
+    }
+    updateCapacityHint();
+  }
+
+  function uploadFile(file, sessionId, index, count, priorBytes, totalBytes, phaseLabel = "Encrypting file") {
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
       xhr.open("POST", "/api/encrypt/file");
@@ -369,7 +486,7 @@
       xhr.upload.onprogress = event => {
         if (!event.lengthComputable) return;
         const percent = totalBytes ? ((priorBytes + event.loaded) / totalBytes) * 100 : (index / count) * 100;
-        setBusyProgress(percent, `Encrypting file ${index} of ${count}: ${file.name}`);
+        setBusyProgress(percent, `${phaseLabel} ${index} of ${count}: ${file.name}`);
       };
       xhr.onload = () => {
         let result = {};
@@ -385,13 +502,22 @@
 
   async function encryptFiles() {
     clearError("#encrypt-error");
-    if (!state.files.size) return showError("#encrypt-error", "Choose at least one file to encrypt.");
     const name = $("#vault-name").value.trim();
     if (!name) return showError("#encrypt-error", "Give this vault a name.");
     const sizeMiB = Number($("#vault-size").value);
     if (!Number.isInteger(sizeMiB) || sizeMiB < 8 || sizeMiB > 65536) {
       return showError("#encrypt-error", "Choose a container size between 8 and 65,536 MiB.");
     }
+
+    if (state.vaultType === "standard") {
+      await encryptStandardVault(name, sizeMiB);
+    } else {
+      await encryptDeniableVault(name, sizeMiB);
+    }
+  }
+
+  async function encryptStandardVault(name, sizeMiB) {
+    if (!state.files.size) return showError("#encrypt-error", "Choose at least one file to encrypt.");
     const passwordField = $("#encrypt-password");
     const confirmField = $("#confirm-password");
     const password = passwordField.value;
@@ -412,6 +538,7 @@
       const created = await jsonPost("/api/encrypt", {
         name,
         size_mib: sizeMiB,
+        vault_type: "standard",
         password,
         files: files.map(file => ({ name: file.name, size: file.size })),
       });
@@ -425,7 +552,7 @@
       let priorBytes = 0;
       for (let index = 0; index < files.length; index += 1) {
         const file = files[index];
-        await uploadFile(file, sessionId, index + 1, files.length, priorBytes, totalBytes);
+        await uploadFile(file, sessionId, index + 1, files.length, priorBytes, totalBytes, "Encrypting file");
         priorBytes += file.size;
         setBusyProgress(totalBytes ? (priorBytes / totalBytes) * 100 : ((index + 1) / files.length) * 100,
           `Encrypted ${index + 1} of ${files.length} files.`);
@@ -440,42 +567,170 @@
       await refreshVaults();
       setBusy(false);
       setView("library");
-      toast(`\"${created.vault_name}\" is encrypted and locked.`);
+      toast(`“${created.vault_name}” is encrypted and locked.`);
     } catch (error) {
-      let locked = false;
-      if (sessionId) {
-        try {
-          await jsonPost("/api/session/lock", { session_id: sessionId });
-          locked = true;
-        } catch { /* preserve the session token so the user can retry Lock */ }
-      }
-      passwordField.value = "";
-      confirmField.value = "";
-      setBusy(false);
-      if (sessionId && locked) {
-        setSession(null, null, null);
-        await refreshVaults();
-        showError("#encrypt-error", `${error.message} The vault may contain files uploaded before the interruption; it is now locked.`);
-      } else if (sessionId) {
-        setSession(sessionId, "encrypt", activeVaultName);
-        showError("#encrypt-error", `${error.message} Some files may already be in the vault. It is still mounted; use Lock vault in the top bar and retry if needed.`);
-      } else {
-        await refreshVaults();
-        showError("#encrypt-error", error.message);
-      }
+      await handleEncryptError(error, sessionId, activeVaultName, [passwordField, confirmField]);
     }
   }
 
-  function showDecryptedFiles(files, vaultName) {
+  async function encryptDeniableVault(name, sizeMiB) {
+    if (!state.outerFiles.size) return showError("#encrypt-error", "Select at least one cover file for the outer volume.");
+    if (!state.hiddenFiles.size) return showError("#encrypt-error", "Select at least one private file for the hidden volume.");
+
+    const outerPassField = $("#encrypt-outer-password");
+    const confirmOuterField = $("#confirm-outer-password");
+    const hiddenPassField = $("#encrypt-hidden-password");
+    const confirmHiddenField = $("#confirm-hidden-password");
+
+    const outerPassword = outerPassField.value;
+    const confirmOuter = confirmOuterField.value;
+    const hiddenPassword = hiddenPassField.value;
+    const confirmHidden = confirmHiddenField.value;
+
+    const outerBytes = new TextEncoder().encode(outerPassword).length;
+    if (outerBytes < 12) return showError("#encrypt-error", "Outer passphrase must have at least 12 UTF-8 bytes.");
+    if (outerBytes > 511) return showError("#encrypt-error", "Outer passphrase cannot exceed 511 UTF-8 bytes.");
+    if (outerPassword !== confirmOuter) return showError("#encrypt-error", "Outer passphrases do not match.");
+
+    const hiddenBytes = new TextEncoder().encode(hiddenPassword).length;
+    if (hiddenBytes < 12) return showError("#encrypt-error", "Hidden passphrase must have at least 12 UTF-8 bytes.");
+    if (hiddenBytes > 511) return showError("#encrypt-error", "Hidden passphrase cannot exceed 511 UTF-8 bytes.");
+    if (hiddenPassword !== confirmHidden) return showError("#encrypt-error", "Hidden passphrases do not match.");
+
+    if (outerPassword === hiddenPassword) {
+      return showError("#encrypt-error", "Outer and hidden passphrases must be completely distinct.");
+    }
+
+    const outerFiles = [...state.outerFiles.values()];
+    const hiddenFiles = [...state.hiddenFiles.values()];
+    const totalOuterBytes = outerFiles.reduce((sum, f) => sum + f.size, 0);
+    const totalHiddenBytes = hiddenFiles.reduce((sum, f) => sum + f.size, 0);
+
+    setBusy(true, "Embedding double volumes…", "DenyFS is creating outer volume and initializing the hidden volume with separate Argon2id keys.", "STEP 1 OF 3 · PREPARING DUAL VOLUMES");
+    let sessionId = null;
+    let activeVaultName = null;
+    try {
+      const created = await jsonPost("/api/encrypt", {
+        name,
+        size_mib: sizeMiB,
+        vault_type: "deniable",
+        password: outerPassword,
+        hidden_password: hiddenPassword,
+        outer_files: outerFiles.map(f => ({ name: f.name, size: f.size })),
+        hidden_files: hiddenFiles.map(f => ({ name: f.name, size: f.size })),
+      });
+      sessionId = created.session_id;
+      activeVaultName = created.vault_name;
+      setSession(sessionId, "encrypt", created.vault_name);
+      outerPassField.value = "";
+      confirmOuterField.value = "";
+      hiddenPassField.value = "";
+      confirmHiddenField.value = "";
+
+      // Phase 1: Upload Outer / Cover Files
+      $("#busy-title").textContent = "Encrypting cover files (outer volume)…";
+      $("#busy-eyebrow").textContent = "STEP 2 OF 3 · COVER FILES";
+      let outerPrior = 0;
+      for (let i = 0; i < outerFiles.length; i += 1) {
+        const file = outerFiles[i];
+        await uploadFile(file, sessionId, i + 1, outerFiles.length, outerPrior, totalOuterBytes, "Cover file");
+        outerPrior += file.size;
+        setBusyProgress(totalOuterBytes ? (outerPrior / totalOuterBytes) * 100 : ((i + 1) / outerFiles.length) * 100,
+          `Encrypted ${i + 1} of ${outerFiles.length} cover files.`);
+      }
+
+      // Transition to Hidden Volume Phase
+      setBusy(true, "Switching to hidden volume…", "DenyFS is safely unmounting outer volume and mounting the hidden volume.", "SWITCHING ENCRYPTION PHASE");
+      await jsonPost("/api/encrypt/switch-phase", {}, { "X-DenyFS-Session": sessionId });
+
+      // Phase 2: Upload Hidden / Private Files
+      $("#busy-title").textContent = "Encrypting private files (hidden volume)…";
+      $("#busy-eyebrow").textContent = "STEP 3 OF 3 · PRIVATE FILES";
+      let hiddenPrior = 0;
+      for (let i = 0; i < hiddenFiles.length; i += 1) {
+        const file = hiddenFiles[i];
+        await uploadFile(file, sessionId, i + 1, hiddenFiles.length, hiddenPrior, totalHiddenBytes, "Private file");
+        hiddenPrior += file.size;
+        setBusyProgress(totalHiddenBytes ? (hiddenPrior / totalHiddenBytes) * 100 : ((i + 1) / hiddenFiles.length) * 100,
+          `Encrypted ${i + 1} of ${hiddenFiles.length} private files.`);
+      }
+
+      // Finish session
+      await jsonPost("/api/encrypt/finish", {}, { "X-DenyFS-Session": sessionId });
+      setSession(null, null, null);
+      state.outerFiles.clear();
+      state.hiddenFiles.clear();
+      state.sizeTouched = false;
+      $("#vault-name").value = "My private vault";
+      $("#vault-size").value = "64";
+      renderOuterFiles();
+      renderHiddenFiles();
+      await refreshVaults();
+      setBusy(false);
+      setView("library");
+      toast(`Deniable vault “${created.vault_name}” created with 2 independent volumes.`);
+    } catch (error) {
+      await handleEncryptError(error, sessionId, activeVaultName, [outerPassField, confirmOuterField, hiddenPassField, confirmHiddenField]);
+    }
+  }
+
+  async function handleEncryptError(error, sessionId, activeVaultName, passFields) {
+    let locked = false;
+    if (sessionId) {
+      try {
+        await jsonPost("/api/session/lock", { session_id: sessionId });
+        locked = true;
+      } catch { /* preserve session token */ }
+    }
+    passFields.forEach(f => { if (f) f.value = ""; });
+    setBusy(false);
+    if (sessionId && locked) {
+      setSession(null, null, null);
+      await refreshVaults();
+      showError("#encrypt-error", `${error.message} The vault was cleanly closed and locked.`);
+    } else if (sessionId) {
+      setSession(sessionId, "encrypt", activeVaultName);
+      showError("#encrypt-error", `${error.message} The vault is still mounted; use Lock vault in the top bar.`);
+    } else {
+      await refreshVaults();
+      showError("#encrypt-error", error.message);
+    }
+  }
+
+  function showDecryptedFiles(files, vaultName, volumeType = "OUTER", protectActive = false) {
     $("#opened-vault-name").textContent = vaultName;
     $("#decrypt-submit").hidden = true;
     $("#opened-vault").hidden = false;
+
+    // Badges & notification
+    const badge = $("#opened-volume-badge");
+    const protectBadge = $("#opened-protect-badge");
+    const notice = $("#opened-volume-notice");
+    const noticeText = $("#opened-volume-notice-text");
+
+    const isHidden = volumeType === "HIDDEN";
+    badge.textContent = isHidden ? "Hidden Volume" : "Outer Volume";
+    badge.className = `vol-badge ${isHidden ? "vol-hidden" : "vol-outer"}`;
+
+    protectBadge.hidden = !protectActive;
+
+    if (isHidden) {
+      notice.className = "volume-notice-bar is-hidden";
+      noticeText.textContent = "Mounted hidden volume directly. Decoy cover files are invisible and unmounted.";
+    } else if (protectActive) {
+      notice.className = "volume-notice-bar is-protected";
+      noticeText.textContent = "Mounted outer volume. Hidden volume sectors are write-protected against overwrite.";
+    } else {
+      notice.className = "volume-notice-bar";
+      noticeText.textContent = "Mounted outer volume. (Hidden volume protection is off).";
+    }
+
     const list = $("#decrypted-files");
     list.replaceChildren();
     if (!files.length) {
       const empty = document.createElement("li");
       empty.className = "empty-decrypted";
-      empty.textContent = "This vault is empty.";
+      empty.textContent = "This volume is empty.";
       list.append(empty);
       return;
     }
@@ -510,16 +765,39 @@
     const password = passwordField.value;
     if (!vaultName) return showError("#decrypt-error", "Choose a vault from your library, or import one first.");
     if (!password) return showError("#decrypt-error", "Enter the passphrase for this vault.");
+
+    const protectCheckbox = $("#protect-hidden-checkbox");
+    const protectPassField = $("#decrypt-hidden-password");
+    const protectHidden = protectCheckbox ? protectCheckbox.checked : false;
+    let hiddenPassword = null;
+    if (protectHidden) {
+      hiddenPassword = protectPassField.value;
+      if (!hiddenPassword) {
+        return showError("#decrypt-error", "Enter the hidden passphrase to enable sector protection.");
+      }
+      if (password === hiddenPassword) {
+        return showError("#decrypt-error", "Outer and hidden passphrases must be distinct to protect hidden volume.");
+      }
+    }
+
     setBusy(true, "Unlocking your vault…", "DenyFS is deriving the key and mounting your encrypted files locally.", "AUTHENTICATING LOCALLY");
     try {
-      const result = await jsonPost("/api/decrypt", { vault_name: vaultName, password });
+      const payload = { vault_name: vaultName, password };
+      if (protectHidden) {
+        payload.protect_hidden = true;
+        payload.hidden_password = hiddenPassword;
+      }
+      const result = await jsonPost("/api/decrypt", payload);
       passwordField.value = "";
+      if (protectPassField) protectPassField.value = "";
       setSession(result.session_id, "decrypt", result.vault_name);
-      showDecryptedFiles(result.files, result.vault_name);
+      showDecryptedFiles(result.files, result.vault_name, result.volume_type, result.protect_active);
       setBusy(false);
-      toast(`“${result.vault_name}” is unlocked. Choose a file to decrypt and save.`);
+      const volName = result.volume_type === "HIDDEN" ? "Hidden volume" : "Outer volume";
+      toast(`“${result.vault_name}” is unlocked (${volName}). Choose a file to decrypt and save.`);
     } catch (error) {
       passwordField.value = "";
+      if (protectPassField) protectPassField.value = "";
       setBusy(false);
       showError("#decrypt-error", error.message);
     }
@@ -536,6 +814,8 @@
       $("#opened-vault").hidden = true;
       $("#decrypt-submit").hidden = false;
       $("#decrypt-password").value = "";
+      const protectPassField = $("#decrypt-hidden-password");
+      if (protectPassField) protectPassField.value = "";
       if (previousMode === "encrypt") await refreshVaults();
       setBusy(false);
       toast("Vault locked. Its encrypted container remains in your local library.");
@@ -587,13 +867,20 @@
     $("#top-lock-button").addEventListener("click", lockVault);
   }
 
+  // Bind view navigation and reveal buttons
   $$("[data-view]").forEach(button => button.addEventListener("click", () => setView(button.dataset.view)));
   $$("[data-reveal]").forEach(button => button.addEventListener("click", () => {
     const input = document.getElementById(button.dataset.reveal);
+    if (!input) return;
     input.type = input.type === "password" ? "text" : "password";
     button.setAttribute("aria-label", input.type === "password" ? "Show passphrase" : "Hide passphrase");
   }));
 
+  // Vault architecture tabs
+  $("#vault-type-standard").addEventListener("click", () => setVaultType("standard"));
+  $("#vault-type-deniable").addEventListener("click", () => setVaultType("deniable"));
+
+  // Standard File Dropzone
   const fileInput = $("#encrypt-file-input");
   const dropzone = $("#dropzone");
   $("#browse-files").addEventListener("click", event => { event.stopPropagation(); fileInput.click(); });
@@ -612,7 +899,65 @@
     dropzone.classList.remove("is-dragging");
   }));
   dropzone.addEventListener("drop", event => addFiles(event.dataTransfer.files));
-  $("#vault-size").addEventListener("input", () => { state.sizeTouched = true; updateCapacityHint([...state.files.values()].reduce((sum, file) => sum + file.size, 0)); });
+
+  // Deniable Outer Dropzone
+  const outerFileInput = $("#encrypt-outer-input");
+  const dropzoneOuter = $("#dropzone-outer");
+  $("#browse-outer-files").addEventListener("click", event => { event.stopPropagation(); outerFileInput.click(); });
+  dropzoneOuter.addEventListener("click", event => { if (event.target !== $("#browse-outer-files")) outerFileInput.click(); });
+  dropzoneOuter.addEventListener("keydown", event => {
+    if (event.key === "Enter" || event.key === " ") { event.preventDefault(); outerFileInput.click(); }
+  });
+  outerFileInput.addEventListener("change", () => { addOuterFiles(outerFileInput.files); outerFileInput.value = ""; });
+  $("#clear-outer-files").addEventListener("click", () => { state.outerFiles.clear(); renderOuterFiles(); });
+  ["dragenter", "dragover"].forEach(name => dropzoneOuter.addEventListener(name, event => {
+    event.preventDefault();
+    dropzoneOuter.classList.add("is-dragging");
+  }));
+  ["dragleave", "drop"].forEach(name => dropzoneOuter.addEventListener(name, event => {
+    event.preventDefault();
+    dropzoneOuter.classList.remove("is-dragging");
+  }));
+  dropzoneOuter.addEventListener("drop", event => addOuterFiles(event.dataTransfer.files));
+
+  // Deniable Hidden Dropzone
+  const hiddenFileInput = $("#encrypt-hidden-input");
+  const dropzoneHidden = $("#dropzone-hidden");
+  $("#browse-hidden-files").addEventListener("click", event => { event.stopPropagation(); hiddenFileInput.click(); });
+  dropzoneHidden.addEventListener("click", event => { if (event.target !== $("#browse-hidden-files")) hiddenFileInput.click(); });
+  dropzoneHidden.addEventListener("keydown", event => {
+    if (event.key === "Enter" || event.key === " ") { event.preventDefault(); hiddenFileInput.click(); }
+  });
+  hiddenFileInput.addEventListener("change", () => { addHiddenFiles(hiddenFileInput.files); hiddenFileInput.value = ""; });
+  $("#clear-hidden-files").addEventListener("click", () => { state.hiddenFiles.clear(); renderHiddenFiles(); });
+  ["dragenter", "dragover"].forEach(name => dropzoneHidden.addEventListener(name, event => {
+    event.preventDefault();
+    dropzoneHidden.classList.add("is-dragging");
+  }));
+  ["dragleave", "drop"].forEach(name => dropzoneHidden.addEventListener(name, event => {
+    event.preventDefault();
+    dropzoneHidden.classList.remove("is-dragging");
+  }));
+  dropzoneHidden.addEventListener("drop", event => addHiddenFiles(event.dataTransfer.files));
+
+  // Protect Hidden Volume checkbox
+  const protectCheckbox = $("#protect-hidden-checkbox");
+  if (protectCheckbox) {
+    protectCheckbox.addEventListener("change", () => {
+      $("#protect-hidden-pass-wrap").hidden = !protectCheckbox.checked;
+      if (protectCheckbox.checked) {
+        $("#decrypt-hidden-password").focus();
+      }
+    });
+  }
+
+  // Vault size input
+  $("#vault-size").addEventListener("input", () => {
+    state.sizeTouched = true;
+    updateCapacityHint();
+  });
+
+  // Action buttons
   $("#encrypt-submit").addEventListener("click", encryptFiles);
   $("#decrypt-submit").addEventListener("click", decryptVault);
   $("#lock-vault").addEventListener("click", lockVault);
@@ -625,7 +970,7 @@
   $(".mini-heading button").addEventListener("click", () => setView("library"));
 
   updateNavFromStatus();
-  updateCapacityHint(0);
+  updateCapacityHint();
   refreshVaults();
   refreshStatus();
 })();
